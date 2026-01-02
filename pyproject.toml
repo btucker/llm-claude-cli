@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "LLM plugin for Claude models via Claude Code CLI"
 readme = "README.md"
 license = "MIT"
-authors = [{ name = "Ben Tucker" }]
+authors = [{ name = "Ben Tucker", email = "ben@btucker.net" }]
 requires-python = ">=3.10"
 dependencies = ["llm>=0.26"]
 classifiers = [
