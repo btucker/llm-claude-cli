@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import llm
-from llm_claude_code import ClaudeCode, ClaudeCodeOptions
+from llm_claude_cli import ClaudeCode, ClaudeCodeOptions
 
 
 class TestErrorHandling:

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_claude_code import ClaudeCode, ClaudeCodeOptions, CLAUDE_MODELS, register_models
+from llm_claude_cli import ClaudeCode, ClaudeCodeOptions, CLAUDE_MODELS, register_models
 
 
 class TestClaudeCodeModel:

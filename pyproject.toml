@@ -1,5 +1,5 @@
 [project]
-name = "llm-claude-code"
+name = "llm-claude-cli"
 version = "0.1.0"
 description = "LLM plugin for Claude models via Claude Code CLI"
 readme = "README.md"
@@ -26,26 +26,26 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/btucker/llm-claude-code"
-Repository = "https://github.com/btucker/llm-claude-code"
-Issues = "https://github.com/btucker/llm-claude-code/issues"
+Homepage = "https://github.com/btucker/llm-claude-cli"
+Repository = "https://github.com/btucker/llm-claude-cli"
+Issues = "https://github.com/btucker/llm-claude-cli/issues"
 
 [project.entry-points.llm]
-claude-code = "llm_claude_code"
+claude-code = "llm_claude_cli"
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["llm_claude_code"]
+py-modules = ["llm_claude_cli"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=llm_claude_code --cov-report=term-missing --cov-report=html"
+addopts = "-v --cov=llm_claude_cli --cov-report=term-missing --cov-report=html"
 
 [tool.coverage.run]
-source = ["llm_claude_code"]
+source = ["llm_claude_cli"]
 branch = true
 
 [tool.coverage.report]

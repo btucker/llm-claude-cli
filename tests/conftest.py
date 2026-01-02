@@ -1,4 +1,4 @@
-"""Pytest fixtures for llm-claude-code tests."""
+"""Pytest fixtures for llm-claude-cli tests."""
 
 import json
 from unittest.mock import MagicMock, patch

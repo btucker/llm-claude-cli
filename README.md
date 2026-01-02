@@ -1,7 +1,7 @@
-# llm-claude-code
+# llm-claude-cli
 
-[![PyPI](https://img.shields.io/pypi/v/llm-claude-code.svg)](https://pypi.org/project/llm-claude-code/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/btucker/llm-claude-code/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/llm-claude-cli.svg)](https://pypi.org/project/llm-claude-cli/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/btucker/llm-claude-cli/blob/main/LICENSE)
 
 LLM plugin for using Claude models through the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code).
 
@@ -19,7 +19,7 @@ claude auth login
 Then install this plugin:
 
 ```bash
-llm install llm-claude-code
+llm install llm-claude-cli
 ```
 
 Or install from source:
