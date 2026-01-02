@@ -69,15 +69,31 @@ llm -m claude-code "Summarize this" -o max_tokens 500
 # Set timeout (in seconds, default 300)
 llm -m claude-code "Complex task" -o timeout 600
 
-# Set system prompt
-llm -m claude-code "Analyze this code" -o system_prompt "You are a code reviewer"
-
 # Limit allowed tools
 llm -m claude-code "Read file.txt" -o allowedTools "Read,Glob"
 
 # Set max turns for agentic operations
 llm -m claude-code "Build a web app" -o max_turns 10
 ```
+
+### System Prompts
+
+You can customize the system prompt in two ways:
+
+```bash
+# Append to Claude Code's default system prompt (recommended)
+# This preserves Claude Code's agentic capabilities while adding your instructions
+llm -m claude-code "Analyze this code" -o system_prompt "Focus on security vulnerabilities"
+
+# Fully replace the default system prompt
+# Use this when you want complete control over Claude's behavior
+llm -m claude-code "Hello" -o system_prompt "You are a pirate" -o replace_system_prompt true
+
+# Using LLM's built-in --system flag (appends by default)
+llm -m claude-code "Review this PR" --system "You are a senior code reviewer"
+```
+
+The default behavior appends to Claude Code's system prompt using `--append-system-prompt`, which preserves agentic tool use. Set `replace_system_prompt` to `true` to fully override with `--system-prompt`.
 
 ### Streaming
 
@@ -169,6 +185,7 @@ This plugin invokes the Claude Code CLI (`claude`) as a subprocess with the `-p`
 - **Streaming**: Uses `--output-format stream-json` for real-time NDJSON streaming
 - **Non-streaming**: Uses `--output-format json` for complete responses
 - **Schemas**: Uses `--json-schema` for structured JSON output conformance
+- **System prompts**: Uses `--append-system-prompt` (default) or `--system-prompt` (replace)
 - **Conversations**: Maintains context by including previous turns in the prompt
 - **Model selection**: Passes `--model` flag to select Opus, Sonnet, or Haiku
 

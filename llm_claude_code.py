@@ -51,7 +51,11 @@ class ClaudeCodeOptions(llm.Options):
     )
     system_prompt: Optional[str] = Field(
         default=None,
-        description="System prompt to use for the conversation",
+        description="System prompt to append to Claude Code's default prompt",
+    )
+    replace_system_prompt: bool = Field(
+        default=False,
+        description="If True, fully replace the default system prompt instead of appending",
     )
     timeout: int = Field(
         default=300,
@@ -111,23 +115,29 @@ class ClaudeCode(llm.Model):
             context_parts.append(f"Human: {prompt_text}")
             prompt_text = "\n\n".join(context_parts)
 
-        # Add system prompt if provided
-        if prompt.system:
-            system_text = prompt.system
-        elif prompt.options and prompt.options.system_prompt:
-            system_text = prompt.options.system_prompt
-        else:
-            system_text = None
-
-        if system_text:
-            prompt_text = f"System: {system_text}\n\n{prompt_text}"
-
         # Build CLI command
         cmd = ["claude", "-p", prompt_text]
 
         # Add model if specified
         if self.claude_model:
             cmd.extend(["--model", self.claude_model])
+
+        # Handle system prompt - prefer prompt.system, fallback to options
+        system_text = None
+        replace_system = False
+        if prompt.system:
+            system_text = prompt.system
+        elif prompt.options and prompt.options.system_prompt:
+            system_text = prompt.options.system_prompt
+            replace_system = prompt.options.replace_system_prompt
+
+        if system_text:
+            if replace_system:
+                # Fully replace Claude Code's default system prompt
+                cmd.extend(["--system-prompt", system_text])
+            else:
+                # Append to Claude Code's default system prompt (preserves agentic behavior)
+                cmd.extend(["--append-system-prompt", system_text])
 
         # Add options
         if prompt.options:
