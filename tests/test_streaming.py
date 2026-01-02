@@ -146,7 +146,7 @@ class TestStreaming:
         with patch("subprocess.Popen", return_value=MockProcess(lines)):
             result = list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        assert "Response text" in result
+        assert "Response text\n\n" in result
 
     def test_streaming_handles_message_event(self, mock_llm_response):
         """Test streaming handles message events with content."""
@@ -231,7 +231,7 @@ class TestStreaming:
         with patch("subprocess.Popen", return_value=MockProcess(lines)):
             result = list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        assert result == ["Hello"]
+        assert result == ["Hello\n\n"]
 
 
 class TestNonStreaming:

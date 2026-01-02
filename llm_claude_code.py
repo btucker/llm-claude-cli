@@ -83,7 +83,7 @@ class ClaudeCodeOptions(llm.Options):
     )
     permission_mode: Optional[str] = Field(
         default=None,
-        description="Permission mode: 'default', 'acceptEdits', or 'bypassPermissions'",
+        description="Permission mode: 'default', 'plan', 'acceptEdits', 'bypassPermissions', 'delegate', 'dontAsk'",
     )
     resume: Optional[str] = Field(
         default=None,
@@ -261,7 +261,7 @@ class ClaudeCode(llm.Model):
                             if content_block.get("type") == "text":
                                 text = content_block.get("text", "")
                                 if text:
-                                    yield text
+                                    yield text + "\n\n"
                     elif event_type == "content_block_delta":
                         # Streaming text delta
                         delta = event.get("delta", {})
