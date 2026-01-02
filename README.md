@@ -87,10 +87,7 @@ llm -m claude-code "Run the tests" -o cwd "/path/to/project"
 # Set permission mode (default, acceptEdits, bypassPermissions)
 llm -m claude-code "Refactor this" -o permission_mode "acceptEdits"
 
-# Continue most recent conversation
-llm -m claude-code "What was I asking about?" -o continue_conversation true
-
-# Resume a specific session
+# Manually resume a specific Claude Code session (for advanced use)
 llm -m claude-code "Continue from where we left off" -o resume "session-id-here"
 
 # Use custom MCP configuration
@@ -210,9 +207,8 @@ This plugin invokes the Claude Code CLI (`claude`) as a subprocess with the `-p`
 - **Non-streaming**: Uses `--output-format json` for complete responses
 - **Schemas**: Uses `--json-schema` for structured JSON output conformance
 - **System prompts**: Uses `--append-system-prompt` (default) or `--system-prompt` (replace)
-- **Conversations**: Maintains context by including previous turns in the prompt
+- **Conversations**: Captures Claude Code session IDs and auto-resumes via `--resume` for multi-turn conversations
 - **Model selection**: Passes `--model` flag to select Opus, Sonnet, or Haiku
-- **Session management**: Uses `--continue` and `--resume` for conversation persistence
 - **Directory access**: Uses `--add-dir` for multi-directory projects
 - **Permission control**: Uses `--permission-mode` and tool filtering
 - **MCP integration**: Uses `--mcp-config` for custom tool servers

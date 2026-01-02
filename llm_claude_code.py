@@ -81,13 +81,9 @@ class ClaudeCodeOptions(llm.Options):
         default=None,
         description="Permission mode: 'default', 'acceptEdits', or 'bypassPermissions'",
     )
-    continue_conversation: bool = Field(
-        default=False,
-        description="Continue the most recent conversation",
-    )
     resume: Optional[str] = Field(
         default=None,
-        description="Resume a specific session by ID",
+        description="Resume a specific Claude Code session by ID (for manual session management)",
     )
     cwd: Optional[str] = Field(
         default=None,
@@ -131,17 +127,7 @@ class ClaudeCode(llm.Model):
         conversation: Optional[llm.Conversation] = None,
     ) -> Iterator[str]:
         """Execute the prompt using Claude Code CLI."""
-        # Build the prompt text
         prompt_text = prompt.prompt
-
-        # Build conversation context if available
-        if conversation and conversation.responses:
-            context_parts = []
-            for prev_response in conversation.responses:
-                context_parts.append(f"Human: {prev_response.prompt.prompt}")
-                context_parts.append(f"Assistant: {prev_response.text()}")
-            context_parts.append(f"Human: {prompt_text}")
-            prompt_text = "\n\n".join(context_parts)
 
         # Build CLI command
         cmd = ["claude", "-p", prompt_text]
@@ -149,6 +135,29 @@ class ClaudeCode(llm.Model):
         # Add model if specified
         if self.claude_model:
             cmd.extend(["--model", self.claude_model])
+
+        # Check if we should resume a previous Claude Code session
+        # Look for session_id in previous responses' log data
+        session_id_to_resume = None
+        if conversation and conversation.responses:
+            # Try to get session_id from the most recent response
+            last_response = conversation.responses[-1]
+            if hasattr(last_response, "_claude_session_id"):
+                session_id_to_resume = last_response._claude_session_id
+
+        # Use --resume if we have a session ID, otherwise use text context for first message
+        if session_id_to_resume:
+            cmd.extend(["--resume", session_id_to_resume])
+        elif conversation and conversation.responses:
+            # Fallback: build conversation context as text for first turn
+            # (in case session_id wasn't captured)
+            context_parts = []
+            for prev_response in conversation.responses:
+                context_parts.append(f"Human: {prev_response.prompt.prompt}")
+                context_parts.append(f"Assistant: {prev_response.text()}")
+            context_parts.append(f"Human: {prompt_text}")
+            # Replace prompt text with full context
+            cmd[2] = "\n\n".join(context_parts)
 
         # Handle system prompt - prefer prompt.system, fallback to options
         system_text = None
@@ -182,8 +191,6 @@ class ClaudeCode(llm.Model):
                     cmd.extend(["--add-dir", directory])
             if prompt.options.permission_mode:
                 cmd.extend(["--permission-mode", prompt.options.permission_mode])
-            if prompt.options.continue_conversation:
-                cmd.append("--continue")
             if prompt.options.resume:
                 cmd.extend(["--resume", prompt.options.resume])
             if prompt.options.mcp_config:
@@ -225,6 +232,7 @@ class ClaudeCode(llm.Model):
 
             input_tokens = 0
             output_tokens = 0
+            session_id = None
 
             for line in iter(process.stdout.readline, ""):
                 line = line.strip()
@@ -234,6 +242,10 @@ class ClaudeCode(llm.Model):
                 try:
                     event = json.loads(line)
                     event_type = event.get("type", "")
+
+                    # Capture session_id from any event that contains it
+                    if "session_id" in event:
+                        session_id = event["session_id"]
 
                     # Handle different event types
                     if event_type == "assistant":
@@ -252,13 +264,15 @@ class ClaudeCode(llm.Model):
                             if text:
                                 yield text
                     elif event_type == "result":
-                        # Final result with usage info
+                        # Final result with usage info and session_id
                         result_text = event.get("result", "")
                         if result_text and isinstance(result_text, str):
                             yield result_text
                         usage = event.get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
+                        if "session_id" in event:
+                            session_id = event["session_id"]
                     elif event_type == "message":
                         # Message event with potential text content
                         content = event.get("content", [])
@@ -277,6 +291,10 @@ class ClaudeCode(llm.Model):
             # Set token usage if available
             if input_tokens or output_tokens:
                 response.set_usage(input=input_tokens, output=output_tokens)
+
+            # Store session_id on response for future conversation turns
+            if session_id:
+                response._claude_session_id = session_id
 
         except subprocess.TimeoutExpired:
             process.kill()
@@ -338,6 +356,11 @@ class ClaudeCode(llm.Model):
                 output_tokens = usage.get("output_tokens", 0)
                 if input_tokens or output_tokens:
                     response.set_usage(input=input_tokens, output=output_tokens)
+
+                # Capture and store session_id for future conversation turns
+                session_id = data.get("session_id")
+                if session_id:
+                    response._claude_session_id = session_id
 
             except json.JSONDecodeError:
                 # Fallback: treat as plain text
@@ -426,6 +449,11 @@ class ClaudeCode(llm.Model):
                 output_tokens = usage.get("output_tokens", 0)
                 if input_tokens or output_tokens:
                     response.set_usage(input=input_tokens, output=output_tokens)
+
+                # Capture and store session_id for future conversation turns
+                session_id = data.get("session_id")
+                if session_id:
+                    response._claude_session_id = session_id
 
             except json.JSONDecodeError:
                 # Fallback: treat as plain text
