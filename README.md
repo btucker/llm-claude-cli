@@ -163,12 +163,8 @@ model = llm.get_model("claude-cli")
 response = model.prompt("What is Python?")
 print(response.text())
 
-# With options
-response = model.prompt(
-    "Explain decorators",
-    max_tokens=500,
-    system_prompt="You are a Python expert"
-)
+# With system prompt
+response = model.prompt("Explain decorators", system="You are a Python expert")
 print(response.text())
 
 # Streaming
