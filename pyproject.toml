@@ -1,50 +1,60 @@
 [project]
 name = "llm-claude-code"
 version = "0.1.0"
-description = "LLM plugin for using Anthropic models through Claude Code CLI"
+description = "LLM plugin for Claude models via Claude Code CLI"
 readme = "README.md"
 license = "MIT"
-authors = [
-    { name = "Ben Tucker", email = "ben@btucker.net" }
-]
+authors = [{ name = "Ben Tucker", email = "ben@btucker.net" }]
 requires-python = ">=3.10"
-dependencies = [
-    "llm>=0.19",
+dependencies = ["llm>=0.26"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
-
-[project.entry-points."llm"]
-claude_code = "llm_claude_code"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "coverage[toml]>=7.0",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[project.urls]
+Homepage = "https://github.com/btucker/llm-claude-code"
+Repository = "https://github.com/btucker/llm-claude-code"
+Issues = "https://github.com/btucker/llm-claude-code/issues"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/llm_claude_code"]
+[project.entry-points.llm]
+claude-code = "llm_claude_code"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["llm_claude_code"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = [
-    "--cov=llm_claude_code",
-    "--cov-report=term-missing",
-]
+addopts = "-v --cov=llm_claude_code --cov-report=term-missing --cov-report=html"
 
 [tool.coverage.run]
-source = ["src/llm_claude_code"]
+source = ["llm_claude_code"]
 branch = true
-omit = ["*/tests/*"]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "if __name__ == .__main__.:",
+    "def __repr__",
     "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]
+fail_under = 80
 show_missing = true
