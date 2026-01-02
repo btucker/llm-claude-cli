@@ -1,7 +1,7 @@
-# llm-claude-code
+# llm-claude-cli
 
-[![PyPI](https://img.shields.io/pypi/v/llm-claude-code.svg)](https://pypi.org/project/llm-claude-code/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/btucker/llm-claude-code/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/llm-claude-cli.svg)](https://pypi.org/project/llm-claude-cli/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/btucker/llm-claude-cli/blob/main/LICENSE)
 
 LLM plugin for using Claude models through the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code).
 
@@ -19,7 +19,7 @@ claude auth login
 Then install this plugin:
 
 ```bash
-llm install llm-claude-code
+llm install llm-claude-cli
 ```
 
 Or install from source:
@@ -33,68 +33,68 @@ pip install -e .
 ### Basic usage
 
 ```bash
-# Use the default Claude Code model
-llm -m claude-code "What is the capital of France?"
+# Use the default Claude CLI model
+llm -m claude-cli "What is the capital of France?"
 
 # Use specific model variants
-llm -m claude-code-opus "Explain quantum computing"
-llm -m claude-code-sonnet "Write a haiku about programming"
-llm -m claude-code-haiku "Quick summary of Python decorators"
+llm -m claude-cli-opus "Explain quantum computing"
+llm -m claude-cli-sonnet "Write a haiku about programming"
+llm -m claude-cli-haiku "Quick summary of Python decorators"
 ```
 
 ### Available models
 
 | Model ID | Aliases | Description |
 |----------|---------|-------------|
-| `claude-code` | `cc` | Default Claude Code model |
-| `claude-code-opus` | `cc-opus`, `opus` | Claude Opus 4.5 |
-| `claude-code-sonnet` | `cc-sonnet`, `sonnet` | Claude Sonnet 4.5 |
-| `claude-code-haiku` | `cc-haiku`, `haiku` | Claude Haiku 4.5 |
+| `claude-cli` | `ccli` | Default Claude CLI model |
+| `claude-cli-opus` | `ccli-opus` | Claude Opus 4.5 |
+| `claude-cli-sonnet` | `ccli-sonnet` | Claude Sonnet 4.5 |
+| `claude-cli-haiku` | `ccli-haiku` | Claude Haiku 4.5 |
 
 ### Using aliases
 
 ```bash
-llm -m cc "Hello, Claude!"
-llm -m cc-opus "Deep analysis of this code"
-llm -m cc-sonnet "Explain this concept"
-llm -m cc-haiku "Quick answer"
+llm -m ccli "Hello, Claude!"
+llm -m ccli-opus "Deep analysis of this code"
+llm -m ccli-sonnet "Explain this concept"
+llm -m ccli-haiku "Quick answer"
 ```
 
 ### Options
 
 ```bash
 # Set maximum tokens
-llm -m claude-code "Summarize this" -o max_tokens 500
+llm -m claude-cli "Summarize this" -o max_tokens 500
 
 # Set timeout (in seconds, default 300)
-llm -m claude-code "Complex task" -o timeout 600
+llm -m claude-cli "Complex task" -o timeout 600
 
 # Limit allowed tools
-llm -m claude-code "Read file.txt" -o allowedTools "Read,Glob"
+llm -m claude-cli "Read file.txt" -o allowedTools "Read,Glob"
 
 # Block specific tools
-llm -m claude-code "Help me code" -o disallowedTools "Bash(rm:*),Bash(sudo:*)"
+llm -m claude-cli "Help me code" -o disallowedTools "Bash(rm:*),Bash(sudo:*)"
 
 # Set max turns for agentic operations
-llm -m claude-code "Build a web app" -o max_turns 10
+llm -m claude-cli "Build a web app" -o max_turns 10
 
 # Add additional directories for Claude to access
-llm -m claude-code "Review the frontend" -o add_dir '["../frontend", "../shared"]'
+llm -m claude-cli "Review the frontend" -o add_dir '["../frontend", "../shared"]'
 
 # Set working directory
-llm -m claude-code "Run the tests" -o cwd "/path/to/project"
+llm -m claude-cli "Run the tests" -o cwd "/path/to/project"
 
 # Set permission mode (default, acceptEdits, bypassPermissions)
-llm -m claude-code "Refactor this" -o permission_mode "acceptEdits"
+llm -m claude-cli "Refactor this" -o permission_mode "acceptEdits"
 
 # Manually resume a specific Claude Code session (for advanced use)
-llm -m claude-code "Continue from where we left off" -o resume "session-id-here"
+llm -m claude-cli "Continue from where we left off" -o resume "session-id-here"
 
 # Use custom MCP configuration
-llm -m claude-code "Use my tools" -o mcp_config "/path/to/mcp.json"
+llm -m claude-cli "Use my tools" -o mcp_config "/path/to/mcp.json"
 
 # Enable verbose logging
-llm -m claude-code "Debug this" -o verbose true
+llm -m claude-cli "Debug this" -o verbose true
 ```
 
 ### System Prompts
@@ -104,14 +104,14 @@ You can customize the system prompt in two ways:
 ```bash
 # Append to Claude Code's default system prompt (recommended)
 # This preserves Claude Code's agentic capabilities while adding your instructions
-llm -m claude-code "Analyze this code" -o system_prompt "Focus on security vulnerabilities"
+llm -m claude-cli "Analyze this code" -o system_prompt "Focus on security vulnerabilities"
 
 # Fully replace the default system prompt
 # Use this when you want complete control over Claude's behavior
-llm -m claude-code "Hello" -o system_prompt "You are a pirate" -o replace_system_prompt true
+llm -m claude-cli "Hello" -o system_prompt "You are a pirate" -o replace_system_prompt true
 
 # Using LLM's built-in --system flag (appends by default)
-llm -m claude-code "Review this PR" --system "You are a senior code reviewer"
+llm -m claude-cli "Review this PR" --system "You are a senior code reviewer"
 ```
 
 The default behavior appends to Claude Code's system prompt using `--append-system-prompt`, which preserves agentic tool use. Set `replace_system_prompt` to `true` to fully override with `--system-prompt`.
@@ -122,10 +122,10 @@ Streaming is enabled by default. The plugin uses Claude Code's `stream-json` out
 
 ```bash
 # Streaming output (default)
-llm -m claude-code "Tell me a story"
+llm -m claude-cli "Tell me a story"
 
 # Disable streaming
-llm -m claude-code "Quick answer" --no-stream
+llm -m claude-cli "Quick answer" --no-stream
 ```
 
 ### Schemas (Structured Output)
@@ -134,10 +134,10 @@ This plugin supports LLM's schema feature for structured JSON output. Use the `-
 
 ```bash
 # Simple schema with field types
-llm -m claude-code "Invent a cool dog" --schema 'name, age int, breed'
+llm -m claude-cli "Invent a cool dog" --schema 'name, age int, breed'
 
 # Complex schema
-llm -m claude-code "List 3 countries" --schema '
+llm -m claude-cli "List 3 countries" --schema '
   countries: [{
     name,
     capital,
@@ -146,7 +146,7 @@ llm -m claude-code "List 3 countries" --schema '
 '
 
 # Using a JSON schema file
-llm -m claude-code "Extract info" --schema-file schema.json
+llm -m claude-cli "Extract info" --schema-file schema.json
 ```
 
 The plugin uses Claude Code's `--json-schema` flag to ensure structured output conformance.
@@ -157,7 +157,7 @@ The plugin uses Claude Code's `--json-schema` flag to ensure structured output c
 import llm
 
 # Get a model
-model = llm.get_model("claude-code")
+model = llm.get_model("claude-cli")
 
 # Basic prompt
 response = model.prompt("What is Python?")

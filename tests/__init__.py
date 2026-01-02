@@ -1,1 +1,1 @@
-# Tests for llm-claude-code plugin
+# Tests for llm-claude-cli plugin
