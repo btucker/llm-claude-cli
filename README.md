@@ -91,6 +91,29 @@ llm -m claude-code "Tell me a story"
 llm -m claude-code "Quick answer" --no-stream
 ```
 
+### Schemas (Structured Output)
+
+This plugin supports LLM's schema feature for structured JSON output. Use the `--schema` flag to specify the expected output format:
+
+```bash
+# Simple schema with field types
+llm -m claude-code "Invent a cool dog" --schema 'name, age int, breed'
+
+# Complex schema
+llm -m claude-code "List 3 countries" --schema '
+  countries: [{
+    name,
+    capital,
+    population int
+  }]
+'
+
+# Using a JSON schema file
+llm -m claude-code "Extract info" --schema-file schema.json
+```
+
+The plugin uses Claude Code's `--json-schema` flag to ensure structured output conformance.
+
 ### Python API
 
 ```python
@@ -120,6 +143,23 @@ conversation = model.conversation()
 response1 = conversation.prompt("My name is Alice")
 response2 = conversation.prompt("What's my name?")
 print(response2.text())  # Should mention Alice
+
+# Schema for structured output
+import json
+
+schema = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "integer"},
+        "breed": {"type": "string"}
+    },
+    "required": ["name", "age", "breed"]
+}
+
+response = model.prompt("Invent a cool dog", schema=schema)
+dog = json.loads(response.text())
+print(f"Name: {dog['name']}, Age: {dog['age']}, Breed: {dog['breed']}")
 ```
 
 ## How it works
@@ -128,6 +168,7 @@ This plugin invokes the Claude Code CLI (`claude`) as a subprocess with the `-p`
 
 - **Streaming**: Uses `--output-format stream-json` for real-time NDJSON streaming
 - **Non-streaming**: Uses `--output-format json` for complete responses
+- **Schemas**: Uses `--json-schema` for structured JSON output conformance
 - **Conversations**: Maintains context by including previous turns in the prompt
 - **Model selection**: Passes `--model` flag to select Opus, Sonnet, or Haiku
 

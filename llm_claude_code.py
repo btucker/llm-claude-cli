@@ -7,7 +7,7 @@ leveraging your existing Claude Code subscription without requiring an API key.
 
 import json
 import subprocess
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 
 import llm
 from pydantic import Field
@@ -77,6 +77,7 @@ class ClaudeCode(llm.Model):
     can_stream = True
     needs_key = None
     key_env_var = None
+    supports_schema = True
 
     class Options(ClaudeCodeOptions):
         pass
@@ -139,9 +140,17 @@ class ClaudeCode(llm.Model):
             if prompt.options.max_turns:
                 cmd.extend(["--max-turns", str(prompt.options.max_turns)])
 
+        # Add schema if provided
+        schema = getattr(prompt, "schema", None)
+        if schema:
+            cmd.extend(["--json-schema", json.dumps(schema)])
+
         timeout = prompt.options.timeout if prompt.options else 300
 
-        if stream:
+        # When using schema, always use non-streaming for reliable structured output
+        if schema:
+            yield from self._execute_with_schema(cmd, timeout, response, schema)
+        elif stream:
             yield from self._execute_streaming(cmd, timeout, response)
         else:
             yield from self._execute_non_streaming(cmd, timeout, response)
@@ -223,6 +232,108 @@ class ClaudeCode(llm.Model):
             raise llm.ModelError(
                 "Claude Code CLI not found. Please install it: https://docs.anthropic.com/en/docs/claude-code"
             )
+
+    def _execute_with_schema(
+        self, cmd: list, timeout: int, response: llm.Response, schema: dict
+    ) -> Iterator[str]:
+        """Execute with JSON schema for structured output."""
+        cmd.extend(["--output-format", "json"])
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+
+            if result.returncode != 0:
+                stderr = result.stderr.strip()
+                raise llm.ModelError(f"Claude Code CLI error: {stderr}")
+
+            stdout = result.stdout.strip()
+            if not stdout:
+                return
+
+            try:
+                data = json.loads(stdout)
+
+                # Extract structured output from response
+                structured_output = self._extract_structured_output(data)
+                if structured_output:
+                    # Return the structured output as a JSON string
+                    if isinstance(structured_output, str):
+                        # Check if it's already valid JSON
+                        try:
+                            json.loads(structured_output)
+                            yield structured_output
+                        except json.JSONDecodeError:
+                            # Not JSON, yield as-is
+                            yield structured_output
+                    else:
+                        yield json.dumps(structured_output)
+                else:
+                    # Fallback to regular text extraction
+                    text = self._extract_text_from_response(data)
+                    if text:
+                        yield text
+
+                # Extract usage information
+                usage = data.get("usage", {})
+                input_tokens = usage.get("input_tokens", 0)
+                output_tokens = usage.get("output_tokens", 0)
+                if input_tokens or output_tokens:
+                    response.set_usage(input=input_tokens, output=output_tokens)
+
+            except json.JSONDecodeError:
+                # Fallback: treat as plain text
+                yield stdout
+
+        except subprocess.TimeoutExpired:
+            raise llm.ModelError("Claude Code CLI timed out")
+        except FileNotFoundError:
+            raise llm.ModelError(
+                "Claude Code CLI not found. Please install it: https://docs.anthropic.com/en/docs/claude-code"
+            )
+
+    def _extract_structured_output(self, data: dict) -> Optional[Any]:
+        """Extract structured output from Claude Code JSON response."""
+        # Check for structured_output field (Claude Code specific)
+        if "structured_output" in data:
+            return data["structured_output"]
+
+        # Check in result field
+        if "result" in data:
+            result = data["result"]
+            if isinstance(result, dict):
+                if "structured_output" in result:
+                    return result["structured_output"]
+                # Check in content array within result
+                content = result.get("content", [])
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text":
+                            text = block.get("text", "")
+                            # Try to parse as JSON
+                            try:
+                                return json.loads(text)
+                            except json.JSONDecodeError:
+                                continue
+
+        # Check in messages array
+        messages = data.get("messages", [])
+        for msg in messages:
+            if isinstance(msg, dict):
+                content = msg.get("content", [])
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", "")
+                        try:
+                            return json.loads(text)
+                        except json.JSONDecodeError:
+                            continue
+
+        return None
 
     def _execute_non_streaming(
         self, cmd: list, timeout: int, response: llm.Response
