@@ -106,10 +106,10 @@ class TestRegisterModels:
     def test_claude_models_definition(self):
         """Test CLAUDE_MODELS contains expected models."""
         model_ids = [m["model_id"] for m in CLAUDE_MODELS]
-        assert "claude-code" in model_ids
-        assert "claude-code-opus" in model_ids
-        assert "claude-code-sonnet" in model_ids
-        assert "claude-code-haiku" in model_ids
+        assert "claude-cli" in model_ids
+        assert "claude-cli-opus" in model_ids
+        assert "claude-cli-sonnet" in model_ids
+        assert "claude-cli-haiku" in model_ids
 
 
 class TestExecuteBasics:

@@ -16,26 +16,26 @@ from pydantic import Field
 # Model definitions with their capabilities
 CLAUDE_MODELS = [
     {
-        "model_id": "claude-code",
-        "aliases": ["cc"],
-        "name": "Claude Code (default model)",
+        "model_id": "claude-cli",
+        "aliases": ["ccli"],
+        "name": "Claude CLI (default model)",
         "claude_model": None,  # Use CLI default
     },
     {
-        "model_id": "claude-code-opus",
-        "aliases": ["cc-opus", "opus"],
+        "model_id": "claude-cli-opus",
+        "aliases": ["ccli-opus"],
         "name": "Claude Opus 4.5",
         "claude_model": "opus",
     },
     {
-        "model_id": "claude-code-sonnet",
-        "aliases": ["cc-sonnet", "sonnet"],
+        "model_id": "claude-cli-sonnet",
+        "aliases": ["ccli-sonnet"],
         "name": "Claude Sonnet 4.5",
         "claude_model": "sonnet",
     },
     {
-        "model_id": "claude-code-haiku",
-        "aliases": ["cc-haiku", "haiku"],
+        "model_id": "claude-cli-haiku",
+        "aliases": ["ccli-haiku"],
         "name": "Claude Haiku 4.5",
         "claude_model": "haiku",
     },

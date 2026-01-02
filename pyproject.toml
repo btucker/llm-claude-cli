@@ -31,7 +31,7 @@ Repository = "https://github.com/btucker/llm-claude-cli"
 Issues = "https://github.com/btucker/llm-claude-cli/issues"
 
 [project.entry-points.llm]
-claude-code = "llm_claude_cli"
+claude-cli = "llm_claude_cli"
 
 [build-system]
 requires = ["setuptools>=61.0"]
