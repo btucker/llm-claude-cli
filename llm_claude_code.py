@@ -51,11 +51,15 @@ class ClaudeCodeOptions(llm.Options):
     )
     system_prompt: Optional[str] = Field(
         default=None,
-        description="System prompt to append to Claude Code's default prompt",
+        description="System prompt (replaces Claude Code's default prompt)",
     )
-    replace_system_prompt: bool = Field(
+    use_default_system_prompt: bool = Field(
         default=False,
-        description="If True, fully replace the default system prompt instead of appending",
+        description="If True, use Claude Code's default agentic system prompt",
+    )
+    append_system_prompt: bool = Field(
+        default=False,
+        description="If True, append system_prompt to Claude Code's default instead of replacing",
     )
     timeout: int = Field(
         default=300,
@@ -159,22 +163,23 @@ class ClaudeCode(llm.Model):
             # Replace prompt text with full context
             cmd[2] = "\n\n".join(context_parts)
 
-        # Handle system prompt - prefer prompt.system, fallback to options
-        system_text = None
-        replace_system = False
-        if prompt.system:
-            system_text = prompt.system
-        elif prompt.options and prompt.options.system_prompt:
-            system_text = prompt.options.system_prompt
-            replace_system = prompt.options.replace_system_prompt
+        # Handle system prompt
+        # By default, use empty system prompt for simple responses
+        # Set use_default_system_prompt=True to use Claude Code's agentic system prompt
+        # Set append_system_prompt=True to append to Claude Code's default
+        use_default = prompt.options.use_default_system_prompt if prompt.options else False
+        append = prompt.options.append_system_prompt if prompt.options else False
 
-        if system_text:
-            if replace_system:
-                # Fully replace Claude Code's default system prompt
-                cmd.extend(["--system-prompt", system_text])
+        if not use_default:
+            system_text = prompt.system or (prompt.options.system_prompt if prompt.options else None)
+            if system_text:
+                if append:
+                    cmd.extend(["--append-system-prompt", system_text])
+                else:
+                    cmd.extend(["--system-prompt", system_text])
             else:
-                # Append to Claude Code's default system prompt (preserves agentic behavior)
-                cmd.extend(["--append-system-prompt", system_text])
+                # Default: empty system prompt for simple responses
+                cmd.extend(["--system-prompt", ""])
 
         # Add options
         if prompt.options:
@@ -218,7 +223,8 @@ class ClaudeCode(llm.Model):
         self, cmd: list, timeout: int, response: llm.Response, cwd: Optional[str] = None
     ) -> Iterator[str]:
         """Execute with streaming JSON output."""
-        cmd.extend(["--output-format", "stream-json"])
+        # --verbose is required for stream-json with -p mode
+        cmd.extend(["--output-format", "stream-json", "--verbose"])
 
         try:
             process = subprocess.Popen(
@@ -264,15 +270,11 @@ class ClaudeCode(llm.Model):
                             if text:
                                 yield text
                     elif event_type == "result":
-                        # Final result with usage info and session_id
-                        result_text = event.get("result", "")
-                        if result_text and isinstance(result_text, str):
-                            yield result_text
+                        # Extract usage info and session_id (don't yield result text -
+                        # it duplicates content already yielded from other events)
                         usage = event.get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
-                        if "session_id" in event:
-                            session_id = event["session_id"]
                     elif event_type == "message":
                         # Message event with potential text content
                         content = event.get("content", [])

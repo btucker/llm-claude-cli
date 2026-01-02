@@ -48,7 +48,7 @@ class TestClaudeCodeOptions:
         options = ClaudeCodeOptions()
         assert options.max_tokens is None
         assert options.system_prompt is None
-        assert options.replace_system_prompt is False
+        assert options.use_default_system_prompt is False
         assert options.timeout == 300
         assert options.allowedTools is None
         assert options.disallowedTools is None
@@ -152,8 +152,25 @@ class TestExecuteBasics:
         assert "--model" in cmd
         assert "opus" in cmd
 
-    def test_execute_with_system_prompt(self, mock_subprocess_run, mock_llm_prompt, mock_llm_response):
-        """Test that execute handles system prompt from prompt object."""
+    def test_execute_uses_empty_system_prompt_by_default(self, mock_subprocess_run, mock_llm_prompt, mock_llm_response):
+        """Test that execute uses empty system prompt by default for simple responses."""
+        model = ClaudeCode(model_id="claude-code")
+
+        mock_subprocess_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"result": "test"}',
+            stderr="",
+        )
+
+        list(model.execute(mock_llm_prompt, stream=False, response=mock_llm_response))
+
+        cmd = mock_subprocess_run.call_args[0][0]
+        assert "--system-prompt" in cmd
+        idx = cmd.index("--system-prompt")
+        assert cmd[idx + 1] == ""
+
+    def test_execute_with_custom_system_prompt(self, mock_subprocess_run, mock_llm_prompt, mock_llm_response):
+        """Test that execute uses provided system prompt."""
         model = ClaudeCode(model_id="claude-code")
         mock_llm_prompt.system = "You are helpful"
 
@@ -166,18 +183,18 @@ class TestExecuteBasics:
         list(model.execute(mock_llm_prompt, stream=False, response=mock_llm_response))
 
         cmd = mock_subprocess_run.call_args[0][0]
-        assert "--append-system-prompt" in cmd
+        assert "--system-prompt" in cmd
         assert "You are helpful" in cmd
 
-    def test_execute_with_replace_system_prompt(self, mock_subprocess_run, mock_llm_response):
-        """Test that execute uses --system-prompt when replace is True."""
+    def test_execute_with_default_system_prompt(self, mock_subprocess_run, mock_llm_response):
+        """Test that use_default_system_prompt=True skips system prompt flag."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
         prompt.prompt = "Test"
         prompt.system = None
         prompt.schema = None
-        options = ClaudeCodeOptions(system_prompt="Custom prompt", replace_system_prompt=True)
+        options = ClaudeCodeOptions(use_default_system_prompt=True)
         prompt.options = options
 
         mock_subprocess_run.return_value = MagicMock(
@@ -189,8 +206,31 @@ class TestExecuteBasics:
         list(model.execute(prompt, stream=False, response=mock_llm_response))
 
         cmd = mock_subprocess_run.call_args[0][0]
-        assert "--system-prompt" in cmd
-        assert "--append-system-prompt" not in cmd
+        assert "--system-prompt" not in cmd
+
+    def test_execute_with_append_system_prompt(self, mock_subprocess_run, mock_llm_response):
+        """Test that append_system_prompt=True uses --append-system-prompt."""
+        model = ClaudeCode(model_id="claude-code")
+
+        prompt = MagicMock()
+        prompt.prompt = "Test"
+        prompt.system = None
+        prompt.schema = None
+        options = ClaudeCodeOptions(system_prompt="Extra instructions", append_system_prompt=True)
+        prompt.options = options
+
+        mock_subprocess_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"result": "test"}',
+            stderr="",
+        )
+
+        list(model.execute(prompt, stream=False, response=mock_llm_response))
+
+        cmd = mock_subprocess_run.call_args[0][0]
+        assert "--append-system-prompt" in cmd
+        assert "Extra instructions" in cmd
+        assert "--system-prompt" not in cmd
 
 
 class TestExecuteOptions:

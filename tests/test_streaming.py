@@ -41,6 +41,31 @@ class MockProcess:
 class TestStreaming:
     """Tests for streaming response handling."""
 
+    def test_streaming_command_includes_verbose(self, mock_llm_response):
+        """Test streaming mode includes --verbose flag required by CLI for stream-json with -p."""
+        model = ClaudeCode(model_id="claude-code")
+
+        prompt = MagicMock()
+        prompt.prompt = "Test"
+        prompt.system = None
+        prompt.schema = None
+        prompt.options = ClaudeCodeOptions()
+
+        lines = [
+            '{"type": "result", "result": "done", "usage": {}}\n',
+        ]
+
+        with patch("subprocess.Popen", return_value=MockProcess(lines)) as mock_popen:
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
+
+        # Verify --verbose is included in the command
+        call_args = mock_popen.call_args
+        cmd = call_args[0][0]
+        assert "--verbose" in cmd, f"--verbose not found in command: {cmd}"
+        assert "--output-format" in cmd
+        stream_json_index = cmd.index("--output-format") + 1
+        assert cmd[stream_json_index] == "stream-json"
+
     def test_streaming_text_delta(self, mock_llm_response):
         """Test streaming handles text_delta events."""
         model = ClaudeCode(model_id="claude-code")
@@ -188,8 +213,8 @@ class TestStreaming:
 
         assert "text" in result
 
-    def test_streaming_result_text(self, mock_llm_response):
-        """Test streaming yields result text from result event."""
+    def test_streaming_ignores_result_text(self, mock_llm_response):
+        """Test streaming ignores result text (it duplicates content from other events)."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
@@ -199,13 +224,14 @@ class TestStreaming:
         prompt.options = ClaudeCodeOptions()
 
         lines = [
-            '{"type": "result", "result": "Final result text", "usage": {}}\n',
+            '{"type": "assistant", "message": {"content": [{"type": "text", "text": "Hello"}]}}\n',
+            '{"type": "result", "result": "Hello", "usage": {}}\n',
         ]
 
         with patch("subprocess.Popen", return_value=MockProcess(lines)):
             result = list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        assert "Final result text" in result
+        assert result == ["Hello"]
 
 
 class TestNonStreaming:
