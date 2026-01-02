@@ -53,9 +53,9 @@ class ClaudeCodeOptions(llm.Options):
         default=None,
         description="System prompt (replaces Claude Code's default prompt)",
     )
-    use_default_system_prompt: bool = Field(
-        default=False,
-        description="If True, use Claude Code's default agentic system prompt",
+    use_default_system_prompt: Optional[bool] = Field(
+        default=None,
+        description="Use Claude Code's default agentic system prompt (auto-detected if not set)",
     )
     append_system_prompt: bool = Field(
         default=False,
@@ -164,10 +164,26 @@ class ClaudeCode(llm.Model):
             cmd[2] = "\n\n".join(context_parts)
 
         # Handle system prompt
-        # By default, use empty system prompt for simple responses
-        # Set use_default_system_prompt=True to use Claude Code's agentic system prompt
-        # Set append_system_prompt=True to append to Claude Code's default
-        use_default = prompt.options.use_default_system_prompt if prompt.options else False
+        # Use empty system prompt only for simple queries
+        # Use default system prompt when agentic features are enabled
+        schema = getattr(prompt, "schema", None)
+        has_agentic_options = prompt.options and any([
+            prompt.options.permission_mode,
+            prompt.options.add_dir,
+            prompt.options.max_turns,
+            prompt.options.allowedTools,
+            prompt.options.disallowedTools,
+            prompt.options.mcp_config,
+        ])
+
+        # Determine if we should use Claude Code's default system prompt
+        if prompt.options and prompt.options.use_default_system_prompt is not None:
+            # Explicit setting takes precedence
+            use_default = prompt.options.use_default_system_prompt
+        else:
+            # Auto-detect: use default for agentic features or schema
+            use_default = has_agentic_options or schema is not None
+
         append = prompt.options.append_system_prompt if prompt.options else False
 
         if not use_default:
@@ -178,7 +194,7 @@ class ClaudeCode(llm.Model):
                 else:
                     cmd.extend(["--system-prompt", system_text])
             else:
-                # Default: empty system prompt for simple responses
+                # Simple query: empty system prompt for direct responses
                 cmd.extend(["--system-prompt", ""])
 
         # Add options
