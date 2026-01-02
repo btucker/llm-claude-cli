@@ -265,9 +265,15 @@ class ClaudeCode(llm.Model):
                                 yield text
                     elif event_type == "result":
                         # Final result with usage info and session_id
-                        result_text = event.get("result", "")
-                        if result_text and isinstance(result_text, str):
-                            yield result_text
+                        result = event.get("result", "")
+                        if result:
+                            if isinstance(result, str):
+                                yield result
+                            elif isinstance(result, dict):
+                                # Handle result as dict with content array
+                                text = self._extract_text_from_response(result)
+                                if text:
+                                    yield text
                         usage = event.get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
@@ -468,15 +474,24 @@ class ClaudeCode(llm.Model):
 
     def _extract_text_from_response(self, data: dict) -> str:
         """Extract text content from Claude Code JSON response."""
+        texts = []
+
         # Try 'result' field first (common in stream-json final output)
         if "result" in data:
             result = data["result"]
             if isinstance(result, str):
                 return result
+            elif isinstance(result, dict):
+                # Handle result as dict with content array
+                result_content = result.get("content", [])
+                for block in result_content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        texts.append(block.get("text", ""))
+                if texts:
+                    return "".join(texts)
 
-        # Try 'content' array
+        # Try 'content' array at top level
         content = data.get("content", [])
-        texts = []
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
                 texts.append(block.get("text", ""))

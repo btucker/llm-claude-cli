@@ -207,6 +207,29 @@ class TestStreaming:
 
         assert "Final result text" in result
 
+    def test_streaming_result_dict_with_content(self, mock_llm_response):
+        """Test streaming handles result as dict with content array."""
+        model = ClaudeCode(model_id="claude-code")
+
+        prompt = MagicMock()
+        prompt.prompt = "Test"
+        prompt.system = None
+        prompt.schema = None
+        prompt.options = ClaudeCodeOptions()
+
+        # Result is a dict containing content array (common in some Claude CLI responses)
+        result_dict = {
+            "content": [{"type": "text", "text": "Response from dict result"}]
+        }
+        lines = [
+            json.dumps({"type": "result", "result": result_dict, "usage": {"input_tokens": 10, "output_tokens": 5}}) + "\n",
+        ]
+
+        with patch("subprocess.Popen", return_value=MockProcess(lines)):
+            result = list(model.execute(prompt, stream=True, response=mock_llm_response))
+
+        assert "Response from dict result" in result
+
 
 class TestNonStreaming:
     """Tests for non-streaming response handling."""
@@ -310,3 +333,31 @@ class TestNonStreaming:
         result = list(model.execute(prompt, stream=False, response=mock_llm_response))
 
         assert "Plain text response" in result
+
+    def test_non_streaming_result_dict_with_content(self, mock_subprocess_run, mock_llm_response):
+        """Test non-streaming handles result as dict with content array."""
+        model = ClaudeCode(model_id="claude-code")
+
+        prompt = MagicMock()
+        prompt.prompt = "Test"
+        prompt.system = None
+        prompt.schema = None
+        prompt.options = ClaudeCodeOptions()
+
+        # Result is a dict containing content array
+        response_data = {
+            "result": {
+                "content": [{"type": "text", "text": "Text from nested result"}]
+            },
+            "usage": {"input_tokens": 20, "output_tokens": 10}
+        }
+
+        mock_subprocess_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(response_data),
+            stderr="",
+        )
+
+        result = list(model.execute(prompt, stream=False, response=mock_llm_response))
+
+        assert "Text from nested result" in result
