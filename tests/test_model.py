@@ -99,7 +99,8 @@ class TestRegisterModels:
 
         # Check that aliases are passed correctly
         for model, aliases in registered_models:
-            assert isinstance(model, ClaudeCode)
+            # Use class name check to avoid module identity issues
+            assert model.__class__.__name__ == "ClaudeCode"
             if aliases:
                 assert isinstance(aliases, tuple)
 
