@@ -72,8 +72,32 @@ llm -m claude-code "Complex task" -o timeout 600
 # Limit allowed tools
 llm -m claude-code "Read file.txt" -o allowedTools "Read,Glob"
 
+# Block specific tools
+llm -m claude-code "Help me code" -o disallowedTools "Bash(rm:*),Bash(sudo:*)"
+
 # Set max turns for agentic operations
 llm -m claude-code "Build a web app" -o max_turns 10
+
+# Add additional directories for Claude to access
+llm -m claude-code "Review the frontend" -o add_dir '["../frontend", "../shared"]'
+
+# Set working directory
+llm -m claude-code "Run the tests" -o cwd "/path/to/project"
+
+# Set permission mode (default, acceptEdits, bypassPermissions)
+llm -m claude-code "Refactor this" -o permission_mode "acceptEdits"
+
+# Continue most recent conversation
+llm -m claude-code "What was I asking about?" -o continue_conversation true
+
+# Resume a specific session
+llm -m claude-code "Continue from where we left off" -o resume "session-id-here"
+
+# Use custom MCP configuration
+llm -m claude-code "Use my tools" -o mcp_config "/path/to/mcp.json"
+
+# Enable verbose logging
+llm -m claude-code "Debug this" -o verbose true
 ```
 
 ### System Prompts
@@ -188,6 +212,10 @@ This plugin invokes the Claude Code CLI (`claude`) as a subprocess with the `-p`
 - **System prompts**: Uses `--append-system-prompt` (default) or `--system-prompt` (replace)
 - **Conversations**: Maintains context by including previous turns in the prompt
 - **Model selection**: Passes `--model` flag to select Opus, Sonnet, or Haiku
+- **Session management**: Uses `--continue` and `--resume` for conversation persistence
+- **Directory access**: Uses `--add-dir` for multi-directory projects
+- **Permission control**: Uses `--permission-mode` and tool filtering
+- **MCP integration**: Uses `--mcp-config` for custom tool servers
 
 ## Requirements
 

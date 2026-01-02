@@ -7,7 +7,7 @@ leveraging your existing Claude Code subscription without requiring an API key.
 
 import json
 import subprocess
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, List, Optional
 
 import llm
 from pydantic import Field
@@ -72,6 +72,34 @@ class ClaudeCodeOptions(llm.Options):
     max_turns: Optional[int] = Field(
         default=None,
         description="Maximum number of agentic turns",
+    )
+    add_dir: Optional[List[str]] = Field(
+        default=None,
+        description="Additional directories for Claude to access",
+    )
+    permission_mode: Optional[str] = Field(
+        default=None,
+        description="Permission mode: 'default', 'acceptEdits', or 'bypassPermissions'",
+    )
+    continue_conversation: bool = Field(
+        default=False,
+        description="Continue the most recent conversation",
+    )
+    resume: Optional[str] = Field(
+        default=None,
+        description="Resume a specific session by ID",
+    )
+    cwd: Optional[str] = Field(
+        default=None,
+        description="Working directory for Claude Code execution",
+    )
+    mcp_config: Optional[str] = Field(
+        default=None,
+        description="Path to MCP configuration file",
+    )
+    verbose: bool = Field(
+        default=False,
+        description="Enable verbose logging output",
     )
 
 
@@ -149,6 +177,19 @@ class ClaudeCode(llm.Model):
                 cmd.extend(["--disallowedTools", prompt.options.disallowedTools])
             if prompt.options.max_turns:
                 cmd.extend(["--max-turns", str(prompt.options.max_turns)])
+            if prompt.options.add_dir:
+                for directory in prompt.options.add_dir:
+                    cmd.extend(["--add-dir", directory])
+            if prompt.options.permission_mode:
+                cmd.extend(["--permission-mode", prompt.options.permission_mode])
+            if prompt.options.continue_conversation:
+                cmd.append("--continue")
+            if prompt.options.resume:
+                cmd.extend(["--resume", prompt.options.resume])
+            if prompt.options.mcp_config:
+                cmd.extend(["--mcp-config", prompt.options.mcp_config])
+            if prompt.options.verbose:
+                cmd.append("--verbose")
 
         # Add schema if provided
         schema = getattr(prompt, "schema", None)
@@ -156,17 +197,18 @@ class ClaudeCode(llm.Model):
             cmd.extend(["--json-schema", json.dumps(schema)])
 
         timeout = prompt.options.timeout if prompt.options else 300
+        cwd = prompt.options.cwd if prompt.options and prompt.options.cwd else None
 
         # When using schema, always use non-streaming for reliable structured output
         if schema:
-            yield from self._execute_with_schema(cmd, timeout, response, schema)
+            yield from self._execute_with_schema(cmd, timeout, response, schema, cwd)
         elif stream:
-            yield from self._execute_streaming(cmd, timeout, response)
+            yield from self._execute_streaming(cmd, timeout, response, cwd)
         else:
-            yield from self._execute_non_streaming(cmd, timeout, response)
+            yield from self._execute_non_streaming(cmd, timeout, response, cwd)
 
     def _execute_streaming(
-        self, cmd: list, timeout: int, response: llm.Response
+        self, cmd: list, timeout: int, response: llm.Response, cwd: Optional[str] = None
     ) -> Iterator[str]:
         """Execute with streaming JSON output."""
         cmd.extend(["--output-format", "stream-json"])
@@ -178,6 +220,7 @@ class ClaudeCode(llm.Model):
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                cwd=cwd,
             )
 
             input_tokens = 0
@@ -244,7 +287,7 @@ class ClaudeCode(llm.Model):
             )
 
     def _execute_with_schema(
-        self, cmd: list, timeout: int, response: llm.Response, schema: dict
+        self, cmd: list, timeout: int, response: llm.Response, schema: dict, cwd: Optional[str] = None
     ) -> Iterator[str]:
         """Execute with JSON schema for structured output."""
         cmd.extend(["--output-format", "json"])
@@ -255,6 +298,7 @@ class ClaudeCode(llm.Model):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                cwd=cwd,
             )
 
             if result.returncode != 0:
@@ -346,7 +390,7 @@ class ClaudeCode(llm.Model):
         return None
 
     def _execute_non_streaming(
-        self, cmd: list, timeout: int, response: llm.Response
+        self, cmd: list, timeout: int, response: llm.Response, cwd: Optional[str] = None
     ) -> Iterator[str]:
         """Execute with JSON output (non-streaming)."""
         cmd.extend(["--output-format", "json"])
@@ -357,6 +401,7 @@ class ClaudeCode(llm.Model):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                cwd=cwd,
             )
 
             if result.returncode != 0:
