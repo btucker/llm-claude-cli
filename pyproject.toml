@@ -17,6 +17,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "coverage[toml]>=7.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/btucker/llm-claude-code"
 Repository = "https://github.com/btucker/llm-claude-code"
@@ -31,3 +38,22 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["llm_claude_code"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=llm_claude_code --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+source = ["llm_claude_code"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+fail_under = 80
+show_missing = true
