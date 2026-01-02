@@ -24,19 +24,19 @@ CLAUDE_MODELS = [
     {
         "model_id": "claude-code-opus",
         "aliases": ["cc-opus", "opus"],
-        "name": "Claude Opus 4",
+        "name": "Claude Opus 4.5",
         "claude_model": "opus",
     },
     {
         "model_id": "claude-code-sonnet",
         "aliases": ["cc-sonnet", "sonnet"],
-        "name": "Claude Sonnet 4",
+        "name": "Claude Sonnet 4.5",
         "claude_model": "sonnet",
     },
     {
         "model_id": "claude-code-haiku",
         "aliases": ["cc-haiku", "haiku"],
-        "name": "Claude Haiku 3.5",
+        "name": "Claude Haiku 4.5",
         "claude_model": "haiku",
     },
 ]

@@ -47,9 +47,9 @@ llm -m claude-code-haiku "Quick summary of Python decorators"
 | Model ID | Aliases | Description |
 |----------|---------|-------------|
 | `claude-code` | `cc` | Default Claude Code model |
-| `claude-code-opus` | `cc-opus`, `opus` | Claude Opus 4 |
-| `claude-code-sonnet` | `cc-sonnet`, `sonnet` | Claude Sonnet 4 |
-| `claude-code-haiku` | `cc-haiku`, `haiku` | Claude Haiku 3.5 |
+| `claude-code-opus` | `cc-opus`, `opus` | Claude Opus 4.5 |
+| `claude-code-sonnet` | `cc-sonnet`, `sonnet` | Claude Sonnet 4.5 |
+| `claude-code-haiku` | `cc-haiku`, `haiku` | Claude Haiku 4.5 |
 
 ### Using aliases
 
