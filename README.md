@@ -55,9 +55,9 @@ llm -m claude-code-haiku "Quick summary of Python decorators"
 
 ```bash
 llm -m cc "Hello, Claude!"
-llm -m opus "Deep analysis of this code"
-llm -m sonnet "Explain this concept"
-llm -m haiku "Quick answer"
+llm -m cc-opus "Deep analysis of this code"
+llm -m cc-sonnet "Explain this concept"
+llm -m cc-haiku "Quick answer"
 ```
 
 ### Options
