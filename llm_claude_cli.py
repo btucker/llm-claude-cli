@@ -239,9 +239,8 @@ class ClaudeCode(llm.Model):
         self, cmd: list, timeout: int, response: llm.Response, cwd: Optional[str] = None
     ) -> Iterator[str]:
         """Execute with streaming JSON output."""
-        # --verbose is required for stream-json with -p mode
         # --include-partial-messages provides smoother streaming with partial message content
-        cmd.extend(["--output-format", "stream-json", "--verbose", "--include-partial-messages"])
+        cmd.extend(["--output-format", "stream-json", "--include-partial-messages"])
 
         try:
             process = subprocess.Popen(

@@ -61,7 +61,6 @@ class TestStreaming:
         # Verify required streaming flags are included in the command
         call_args = mock_popen.call_args
         cmd = call_args[0][0]
-        assert "--verbose" in cmd, f"--verbose not found in command: {cmd}"
         assert "--include-partial-messages" in cmd, f"--include-partial-messages not found in command: {cmd}"
         assert "--output-format" in cmd
         stream_json_index = cmd.index("--output-format") + 1
