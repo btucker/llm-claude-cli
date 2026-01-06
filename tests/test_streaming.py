@@ -41,8 +41,8 @@ class MockProcess:
 class TestStreaming:
     """Tests for streaming response handling."""
 
-    def test_streaming_command_includes_verbose(self, mock_llm_response):
-        """Test streaming mode includes --verbose flag required by CLI for stream-json with -p."""
+    def test_streaming_command_includes_required_flags(self, mock_llm_response):
+        """Test streaming mode includes required flags for stream-json with -p."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
@@ -58,10 +58,11 @@ class TestStreaming:
         with patch("subprocess.Popen", return_value=MockProcess(lines)) as mock_popen:
             list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        # Verify --verbose is included in the command
+        # Verify required streaming flags are included in the command
         call_args = mock_popen.call_args
         cmd = call_args[0][0]
         assert "--verbose" in cmd, f"--verbose not found in command: {cmd}"
+        assert "--include-partial-messages" in cmd, f"--include-partial-messages not found in command: {cmd}"
         assert "--output-format" in cmd
         stream_json_index = cmd.index("--output-format") + 1
         assert cmd[stream_json_index] == "stream-json"
