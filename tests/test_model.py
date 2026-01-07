@@ -9,6 +9,19 @@ import pytest
 from llm_claude_cli import ClaudeCode, ClaudeCodeOptions, CLAUDE_MODELS, register_models
 
 
+def create_mock_popen(events=None):
+    """Create a properly configured mock Popen for streaming tests."""
+    if events is None:
+        events = [
+            '{"type": "result", "result": "test", "usage": {"input_tokens": 10, "output_tokens": 5}}',
+        ]
+
+    mock_process = MagicMock()
+    mock_process.stdout.readline.side_effect = events + [""]  # Empty string ends iteration
+    mock_process.wait.return_value = 0
+    return mock_process
+
+
 class TestClaudeCodeModel:
     """Tests for ClaudeCode model initialization and properties."""
 
@@ -46,16 +59,13 @@ class TestClaudeCodeOptions:
     def test_default_options(self):
         """Test default option values."""
         options = ClaudeCodeOptions()
-        assert options.max_tokens is None
         assert options.system_prompt is None
         assert options.use_default_system_prompt is None
         assert options.timeout == 300
         assert options.allowedTools is None
         assert options.disallowedTools is None
-        assert options.max_turns is None
         assert options.add_dir is None
         assert options.permission_mode is None
-        assert options.resume is None
         assert options.cwd is None
         assert options.mcp_config is None
         assert options.verbose is False
@@ -63,18 +73,16 @@ class TestClaudeCodeOptions:
     def test_custom_options(self):
         """Test setting custom option values."""
         options = ClaudeCodeOptions(
-            max_tokens=1000,
             system_prompt="Be helpful",
             timeout=600,
             allowedTools="Read,Write",
-            max_turns=5,
+            add_dir="../frontend",
             verbose=True,
         )
-        assert options.max_tokens == 1000
         assert options.system_prompt == "Be helpful"
         assert options.timeout == 600
         assert options.allowedTools == "Read,Write"
-        assert options.max_turns == 5
+        assert options.add_dir == "../frontend"
         assert options.verbose is True
 
 
@@ -115,78 +123,64 @@ class TestRegisterModels:
 class TestExecuteBasics:
     """Tests for basic execute functionality."""
 
-    def test_execute_builds_basic_command(self, mock_subprocess_run, mock_llm_prompt, mock_llm_response):
+    def test_execute_builds_basic_command(self, mock_llm_prompt, mock_llm_response):
         """Test that execute builds correct basic command."""
         model = ClaudeCode(model_id="claude-code")
 
-        # Setup mock
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "session_id": "123"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        # Execute
-        result = list(model.execute(mock_llm_prompt, stream=False, response=mock_llm_response))
+            # Execute
+            list(model.execute(mock_llm_prompt, stream=True, response=mock_llm_response))
 
-        # Verify command
-        call_args = mock_subprocess_run.call_args
-        cmd = call_args[0][0]
-        assert cmd[0] == "claude"
-        assert "-p" in cmd
-        assert "Test prompt" in cmd
+            # Verify command
+            cmd = mock_popen.call_args[0][0]
+            assert cmd[0] == "claude"
+            assert "-p" in cmd
+            assert "Test prompt" in cmd
 
-    def test_execute_with_model_flag(self, mock_subprocess_run, mock_llm_prompt, mock_llm_response):
+    def test_execute_with_model_flag(self, mock_llm_prompt, mock_llm_response):
         """Test that execute adds --model flag for specific models."""
         model = ClaudeCode(model_id="claude-code-opus", claude_model="opus")
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(mock_llm_prompt, stream=False, response=mock_llm_response))
+            list(model.execute(mock_llm_prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--model" in cmd
-        assert "opus" in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--model" in cmd
+            assert "opus" in cmd
 
-    def test_execute_uses_empty_system_prompt_by_default(self, mock_subprocess_run, mock_llm_prompt, mock_llm_response):
+    def test_execute_uses_empty_system_prompt_by_default(self, mock_llm_prompt, mock_llm_response):
         """Test that execute uses empty system prompt by default for simple responses."""
         model = ClaudeCode(model_id="claude-code")
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(mock_llm_prompt, stream=False, response=mock_llm_response))
+            list(model.execute(mock_llm_prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--system-prompt" in cmd
-        idx = cmd.index("--system-prompt")
-        assert cmd[idx + 1] == ""
+            cmd = mock_popen.call_args[0][0]
+            assert "--system-prompt" in cmd
+            idx = cmd.index("--system-prompt")
+            assert cmd[idx + 1] == ""
 
-    def test_execute_with_custom_system_prompt(self, mock_subprocess_run, mock_llm_prompt, mock_llm_response):
+    def test_execute_with_custom_system_prompt(self, mock_llm_prompt, mock_llm_response):
         """Test that execute uses provided system prompt."""
         model = ClaudeCode(model_id="claude-code")
         mock_llm_prompt.system = "You are helpful"
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(mock_llm_prompt, stream=False, response=mock_llm_response))
+            list(model.execute(mock_llm_prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--system-prompt" in cmd
-        assert "You are helpful" in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--system-prompt" in cmd
+            assert "You are helpful" in cmd
 
-    def test_execute_with_default_system_prompt(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_with_default_system_prompt(self, mock_llm_response):
         """Test that use_default_system_prompt=True skips system prompt flag."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -197,18 +191,15 @@ class TestExecuteBasics:
         options = ClaudeCodeOptions(use_default_system_prompt=True)
         prompt.options = options
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--system-prompt" not in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--system-prompt" not in cmd
 
-    def test_execute_with_append_system_prompt(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_with_append_system_prompt(self, mock_llm_response):
         """Test that append_system_prompt=True uses --append-system-prompt."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -219,18 +210,15 @@ class TestExecuteBasics:
         options = ClaudeCodeOptions(system_prompt="Extra instructions", append_system_prompt=True)
         prompt.options = options
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--append-system-prompt" in cmd
-        assert "Extra instructions" in cmd
-        assert "--system-prompt" not in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--append-system-prompt" in cmd
+            assert "Extra instructions" in cmd
+            assert "--system-prompt" not in cmd
 
     def test_execute_auto_enables_default_prompt_for_schema(self, mock_subprocess_run, mock_llm_response):
         """Test that schema triggers use of default system prompt."""
@@ -244,17 +232,17 @@ class TestExecuteBasics:
 
         mock_subprocess_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"result": "{}"}',
+            stdout='{"result": "test", "usage": {}}',
             stderr="",
         )
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+        list(model.execute(prompt, stream=True, response=mock_llm_response))
 
         cmd = mock_subprocess_run.call_args[0][0]
         # Should NOT have --system-prompt when schema is present (uses default)
         assert "--system-prompt" not in cmd or cmd[cmd.index("--system-prompt") + 1] != ""
 
-    def test_execute_auto_enables_default_prompt_for_permission_mode(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_auto_enables_default_prompt_for_permission_mode(self, mock_llm_response):
         """Test that permission_mode triggers use of default system prompt."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -264,19 +252,16 @@ class TestExecuteBasics:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions(permission_mode="plan")
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        # Should NOT have empty --system-prompt when permission_mode is set
-        assert "--system-prompt" not in cmd
+            cmd = mock_popen.call_args[0][0]
+            # Should NOT have empty --system-prompt when permission_mode is set
+            assert "--system-prompt" not in cmd
 
-    def test_execute_auto_enables_default_prompt_for_add_dir(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_auto_enables_default_prompt_for_add_dir(self, mock_llm_response):
         """Test that add_dir triggers use of default system prompt."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -284,20 +269,17 @@ class TestExecuteBasics:
         prompt.prompt = "Test"
         prompt.system = None
         prompt.schema = None
-        prompt.options = ClaudeCodeOptions(add_dir=["./other"])
+        prompt.options = ClaudeCodeOptions(add_dir="./other")
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--system-prompt" not in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--system-prompt" not in cmd
 
-    def test_execute_explicit_false_overrides_auto_detection(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_explicit_false_overrides_auto_detection(self, mock_llm_response):
         """Test that explicit use_default_system_prompt=False overrides auto-detection."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -308,47 +290,22 @@ class TestExecuteBasics:
         # Has agentic option but explicitly disables default prompt
         prompt.options = ClaudeCodeOptions(permission_mode="plan", use_default_system_prompt=False)
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        # Should have empty --system-prompt despite permission_mode
-        assert "--system-prompt" in cmd
-        idx = cmd.index("--system-prompt")
-        assert cmd[idx + 1] == ""
+            cmd = mock_popen.call_args[0][0]
+            # Should have empty --system-prompt despite permission_mode
+            assert "--system-prompt" in cmd
+            idx = cmd.index("--system-prompt")
+            assert cmd[idx + 1] == ""
 
 
 class TestExecuteOptions:
     """Tests for execute with various options."""
 
-    def test_execute_with_max_tokens(self, mock_subprocess_run, mock_llm_response):
-        """Test max_tokens option is passed correctly."""
-        model = ClaudeCode(model_id="claude-code")
-
-        prompt = MagicMock()
-        prompt.prompt = "Test"
-        prompt.system = None
-        prompt.schema = None
-        prompt.options = ClaudeCodeOptions(max_tokens=500)
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
-
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
-
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--max-tokens" in cmd
-        assert "500" in cmd
-
-    def test_execute_with_allowed_tools(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_with_allowed_tools(self, mock_llm_response):
         """Test allowedTools option is passed correctly."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -358,42 +315,35 @@ class TestExecuteOptions:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions(allowedTools="Read,Write,Glob")
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--allowedTools" in cmd
-        assert "Read,Write,Glob" in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--allowedTools" in cmd
+            assert "Read,Write,Glob" in cmd
 
-    def test_execute_with_add_dir(self, mock_subprocess_run, mock_llm_response):
-        """Test add_dir option adds multiple --add-dir flags."""
+    def test_execute_with_add_dir(self, mock_llm_response):
+        """Test add_dir option adds --add-dir flag."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
         prompt.prompt = "Test"
         prompt.system = None
         prompt.schema = None
-        prompt.options = ClaudeCodeOptions(add_dir=["../frontend", "../backend"])
+        prompt.options = ClaudeCodeOptions(add_dir="../frontend")
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert cmd.count("--add-dir") == 2
-        assert "../frontend" in cmd
-        assert "../backend" in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--add-dir" in cmd
+            assert "../frontend" in cmd
 
-    def test_execute_with_verbose(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_with_verbose(self, mock_llm_response):
         """Test verbose option is passed correctly."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -403,18 +353,15 @@ class TestExecuteOptions:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions(verbose=True)
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--verbose" in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--verbose" in cmd
 
-    def test_execute_with_cwd(self, mock_subprocess_run, mock_llm_response):
+    def test_execute_with_cwd(self, mock_llm_response):
         """Test cwd option sets working directory."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -424,13 +371,10 @@ class TestExecuteOptions:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions(cwd="/custom/path")
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test"}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+            list(model.execute(prompt, stream=True, response=mock_llm_response))
 
-        call_kwargs = mock_subprocess_run.call_args[1]
-        assert call_kwargs.get("cwd") == "/custom/path"
+            call_kwargs = mock_popen.call_args[1]
+            assert call_kwargs.get("cwd") == "/custom/path"

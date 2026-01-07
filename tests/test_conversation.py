@@ -1,6 +1,6 @@
 """Tests for conversation handling."""
 
-import json
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,206 +8,193 @@ import pytest
 from llm_claude_cli import ClaudeCode, ClaudeCodeOptions
 
 
-class TestConversationResume:
-    """Tests for conversation resumption via session_id."""
+def create_mock_popen(events=None):
+    """Create a properly configured mock Popen for streaming tests."""
+    if events is None:
+        events = [
+            '{"type": "result", "result": "test", "usage": {"input_tokens": 10, "output_tokens": 5}}',
+        ]
 
-    def test_resumes_with_session_id(self, mock_subprocess_run, mock_llm_response):
-        """Test that execute uses --resume when session_id is available."""
+    mock_process = MagicMock()
+    mock_process.stdout.readline.side_effect = events + [""]  # Empty string ends iteration
+    mock_process.wait.return_value = 0
+    return mock_process
+
+
+class TestSessionPersistence:
+    """Tests for session persistence based on conversation management."""
+
+    def test_no_session_persistence_for_one_off_prompt(self, mock_llm_response):
+        """Test that one-off prompts use --no-session-persistence."""
         model = ClaudeCode(model_id="claude-code")
 
-        # Create a mock previous response with session_id
-        prev_response = MagicMock()
-        prev_response._claude_session_id = "previous-session-123"
-        prev_response.prompt = MagicMock()
-        prev_response.prompt.prompt = "Previous question"
-        prev_response.text = MagicMock(return_value="Previous answer")
-
-        # Create conversation with previous response
-        conversation = MagicMock()
-        conversation.responses = [prev_response]
-
         prompt = MagicMock()
-        prompt.prompt = "Follow-up question"
+        prompt.prompt = "One-off question"
         prompt.system = None
         prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "usage": {}}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response, conversation=conversation))
+            # Execute without conversation (one-off prompt)
+            list(model.execute(prompt, stream=True, response=mock_llm_response, conversation=None))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--resume" in cmd
-        assert "previous-session-123" in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--no-session-persistence" in cmd
+            assert "--session-id" not in cmd
 
-    def test_falls_back_to_context_without_session_id(self, mock_subprocess_run, mock_llm_response):
-        """Test fallback to text context when no session_id available."""
+    def test_session_id_for_conversation(self, mock_llm_response):
+        """Test that conversations use --session-id with deterministic UUID."""
         model = ClaudeCode(model_id="claude-code")
 
-        # Create a mock previous response WITHOUT session_id
-        prev_response = MagicMock(spec=[])  # No _claude_session_id
-        prev_response.prompt = MagicMock()
-        prev_response.prompt.prompt = "Previous question"
-        prev_response.text = MagicMock(return_value="Previous answer")
-
         conversation = MagicMock()
-        conversation.responses = [prev_response]
-
-        prompt = MagicMock()
-        prompt.prompt = "Follow-up question"
-        prompt.system = None
-        prompt.schema = None
-        prompt.options = ClaudeCodeOptions()
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "usage": {}}',
-            stderr="",
-        )
-
-        list(model.execute(prompt, stream=False, response=mock_llm_response, conversation=conversation))
-
-        cmd = mock_subprocess_run.call_args[0][0]
-        # Should NOT have --resume
-        assert "--resume" not in cmd
-        # Should have context embedded in prompt
-        prompt_text = cmd[2]
-        assert "Previous question" in prompt_text
-        assert "Previous answer" in prompt_text
-        assert "Follow-up question" in prompt_text
-
-    def test_no_resume_for_first_message(self, mock_subprocess_run, mock_llm_response):
-        """Test that first message in conversation doesn't use --resume."""
-        model = ClaudeCode(model_id="claude-code")
-
-        # Empty conversation (first message)
-        conversation = MagicMock()
+        conversation.id = "test-conversation-123"
         conversation.responses = []
 
         prompt = MagicMock()
-        prompt.prompt = "First question"
+        prompt.prompt = "Question in conversation"
         prompt.system = None
         prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "session_id": "new-session", "usage": {}}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response, conversation=conversation))
+            list(model.execute(prompt, stream=True, response=mock_llm_response, conversation=conversation))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        assert "--resume" not in cmd
+            cmd = mock_popen.call_args[0][0]
+            assert "--no-session-persistence" not in cmd
+            assert "--session-id" in cmd
 
-    def test_manual_resume_option(self, mock_subprocess_run, mock_llm_response):
-        """Test manual resume option takes precedence."""
+            # Verify the session ID is deterministic
+            session_id_idx = cmd.index("--session-id")
+            session_id = cmd[session_id_idx + 1]
+            expected_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"llm-claude-cli:{conversation.id}"))
+            assert session_id == expected_uuid
+
+    def test_same_conversation_id_produces_same_session_id(self, mock_llm_response):
+        """Test that the same conversation ID always produces the same session UUID."""
         model = ClaudeCode(model_id="claude-code")
+
+        with patch("subprocess.Popen") as mock_popen:
+            # First call - uses --session-id
+            mock_popen.return_value = create_mock_popen()
+
+            conversation1 = MagicMock()
+            conversation1.id = "my-conversation"
+            conversation1.responses = []
+
+            prompt1 = MagicMock()
+            prompt1.prompt = "First message"
+            prompt1.system = None
+            prompt1.schema = None
+            prompt1.options = ClaudeCodeOptions()
+
+            list(model.execute(prompt1, stream=True, response=mock_llm_response, conversation=conversation1))
+            cmd1 = mock_popen.call_args[0][0]
+            assert "--session-id" in cmd1
+            session_id_idx1 = cmd1.index("--session-id")
+            session_id1 = cmd1[session_id_idx1 + 1]
+
+            # Reset mock
+            mock_popen.reset_mock()
+            mock_popen.return_value = create_mock_popen()
+
+            # Second call with same conversation ID - uses --resume
+            conversation2 = MagicMock()
+            conversation2.id = "my-conversation"  # Same ID
+            conversation2.responses = [MagicMock()]  # Has previous responses
+
+            prompt2 = MagicMock()
+            prompt2.prompt = "Second message"
+            prompt2.system = None
+            prompt2.schema = None
+            prompt2.options = ClaudeCodeOptions()
+
+            list(model.execute(prompt2, stream=True, response=mock_llm_response, conversation=conversation2))
+            cmd2 = mock_popen.call_args[0][0]
+            # Second call uses --resume instead of --session-id
+            assert "--resume" in cmd2
+            resume_idx = cmd2.index("--resume")
+            session_id2 = cmd2[resume_idx + 1]
+
+            # Session IDs should be identical
+            assert session_id1 == session_id2
+
+    def test_different_conversation_ids_produce_different_session_ids(self, mock_llm_response):
+        """Test that different conversation IDs produce different session UUIDs."""
+        model = ClaudeCode(model_id="claude-code")
+
+        with patch("subprocess.Popen") as mock_popen:
+            # First conversation
+            mock_popen.return_value = create_mock_popen()
+
+            conversation1 = MagicMock()
+            conversation1.id = "conversation-a"
+            conversation1.responses = []
+
+            prompt1 = MagicMock()
+            prompt1.prompt = "Message A"
+            prompt1.system = None
+            prompt1.schema = None
+            prompt1.options = ClaudeCodeOptions()
+
+            list(model.execute(prompt1, stream=True, response=mock_llm_response, conversation=conversation1))
+            cmd1 = mock_popen.call_args[0][0]
+            session_id_idx1 = cmd1.index("--session-id")
+            session_id1 = cmd1[session_id_idx1 + 1]
+
+            # Reset mock
+            mock_popen.reset_mock()
+            mock_popen.return_value = create_mock_popen()
+
+            # Second conversation with different ID
+            conversation2 = MagicMock()
+            conversation2.id = "conversation-b"  # Different ID
+            conversation2.responses = []
+
+            prompt2 = MagicMock()
+            prompt2.prompt = "Message B"
+            prompt2.system = None
+            prompt2.schema = None
+            prompt2.options = ClaudeCodeOptions()
+
+            list(model.execute(prompt2, stream=True, response=mock_llm_response, conversation=conversation2))
+            cmd2 = mock_popen.call_args[0][0]
+            session_id_idx2 = cmd2.index("--session-id")
+            session_id2 = cmd2[session_id_idx2 + 1]
+
+            # Session IDs should be different
+            assert session_id1 != session_id2
+
+
+class TestSessionIdFormat:
+    """Tests for session ID format validation."""
+
+    def test_session_id_is_valid_uuid(self, mock_llm_response):
+        """Test that generated session ID is a valid UUID."""
+        model = ClaudeCode(model_id="claude-code")
+
+        conversation = MagicMock()
+        conversation.id = "any-conversation-id"
+        conversation.responses = []
 
         prompt = MagicMock()
         prompt.prompt = "Test"
         prompt.system = None
         prompt.schema = None
-        prompt.options = ClaudeCodeOptions(resume="manual-session-id")
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "usage": {}}',
-            stderr="",
-        )
-
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
-
-        cmd = mock_subprocess_run.call_args[0][0]
-        # Should have the manual resume, not auto-resume
-        resume_indices = [i for i, x in enumerate(cmd) if x == "--resume"]
-        assert len(resume_indices) >= 1
-        # Check that manual-session-id is in the command
-        assert "manual-session-id" in cmd
-
-
-class TestConversationContext:
-    """Tests for building conversation context."""
-
-    def test_builds_context_from_multiple_turns(self, mock_subprocess_run, mock_llm_response):
-        """Test context building with multiple conversation turns."""
-        model = ClaudeCode(model_id="claude-code")
-
-        # Create multiple previous responses WITHOUT session_id
-        prev_response1 = MagicMock(spec=[])
-        prev_response1.prompt = MagicMock()
-        prev_response1.prompt.prompt = "Question 1"
-        prev_response1.text = MagicMock(return_value="Answer 1")
-
-        prev_response2 = MagicMock(spec=[])
-        prev_response2.prompt = MagicMock()
-        prev_response2.prompt.prompt = "Question 2"
-        prev_response2.text = MagicMock(return_value="Answer 2")
-
-        conversation = MagicMock()
-        conversation.responses = [prev_response1, prev_response2]
-
-        prompt = MagicMock()
-        prompt.prompt = "Question 3"
-        prompt.system = None
-        prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "usage": {}}',
-            stderr="",
-        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = create_mock_popen()
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response, conversation=conversation))
+            list(model.execute(prompt, stream=True, response=mock_llm_response, conversation=conversation))
 
-        cmd = mock_subprocess_run.call_args[0][0]
-        prompt_text = cmd[2]
+            cmd = mock_popen.call_args[0][0]
+            session_id_idx = cmd.index("--session-id")
+            session_id = cmd[session_id_idx + 1]
 
-        # All turns should be in the context
-        assert "Human: Question 1" in prompt_text
-        assert "Assistant: Answer 1" in prompt_text
-        assert "Human: Question 2" in prompt_text
-        assert "Assistant: Answer 2" in prompt_text
-        assert "Human: Question 3" in prompt_text
-
-    def test_context_order_is_correct(self, mock_subprocess_run, mock_llm_response):
-        """Test that conversation context maintains correct order."""
-        model = ClaudeCode(model_id="claude-code")
-
-        prev_response = MagicMock(spec=[])
-        prev_response.prompt = MagicMock()
-        prev_response.prompt.prompt = "First"
-        prev_response.text = MagicMock(return_value="Response")
-
-        conversation = MagicMock()
-        conversation.responses = [prev_response]
-
-        prompt = MagicMock()
-        prompt.prompt = "Second"
-        prompt.system = None
-        prompt.schema = None
-        prompt.options = ClaudeCodeOptions()
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "usage": {}}',
-            stderr="",
-        )
-
-        list(model.execute(prompt, stream=False, response=mock_llm_response, conversation=conversation))
-
-        cmd = mock_subprocess_run.call_args[0][0]
-        prompt_text = cmd[2]
-
-        # Verify order
-        first_idx = prompt_text.index("Human: First")
-        response_idx = prompt_text.index("Assistant: Response")
-        second_idx = prompt_text.index("Human: Second")
-
-        assert first_idx < response_idx < second_idx
+            # Should be a valid UUID (won't raise)
+            parsed = uuid.UUID(session_id)
+            assert parsed.version == 5  # uuid5

@@ -88,27 +88,6 @@ class TestStreaming:
         assert "Hello" in result
         assert " world" in result
 
-    def test_streaming_captures_session_id(self, mock_llm_response):
-        """Test streaming captures session_id from events."""
-        model = ClaudeCode(model_id="claude-code")
-
-        prompt = MagicMock()
-        prompt.prompt = "Test"
-        prompt.system = None
-        prompt.schema = None
-        prompt.options = ClaudeCodeOptions()
-
-        lines = [
-            '{"type": "system", "session_id": "test-session-abc"}\n',
-            '{"type": "result", "result": "done", "session_id": "test-session-abc", "usage": {}}\n',
-        ]
-
-        with patch("subprocess.Popen", return_value=MockProcess(lines)):
-            list(model.execute(prompt, stream=True, response=mock_llm_response))
-
-        assert hasattr(mock_llm_response, "_claude_session_id")
-        assert mock_llm_response._claude_session_id == "test-session-abc"
-
     def test_streaming_sets_usage(self, mock_llm_response):
         """Test streaming sets token usage from result event."""
         model = ClaudeCode(model_id="claude-code")
@@ -235,10 +214,10 @@ class TestStreaming:
 
 
 class TestNonStreaming:
-    """Tests for non-streaming response handling."""
+    """Tests for non-streaming response handling (which uses streaming internally)."""
 
-    def test_non_streaming_extracts_result(self, mock_subprocess_run, mock_llm_response):
-        """Test non-streaming extracts result field."""
+    def test_non_streaming_collects_all_output(self, mock_llm_response):
+        """Test non-streaming collects all output and returns at once."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
@@ -247,37 +226,21 @@ class TestNonStreaming:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "Test response", "usage": {}}',
-            stderr="",
-        )
+        lines = [
+            '{"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hello"}}\n',
+            '{"type": "content_block_delta", "delta": {"type": "text_delta", "text": " world"}}\n',
+            '{"type": "result", "result": "", "usage": {"input_tokens": 10, "output_tokens": 5}}\n',
+        ]
 
-        result = list(model.execute(prompt, stream=False, response=mock_llm_response))
+        with patch("subprocess.Popen", return_value=MockProcess(lines)):
+            result = list(model.execute(prompt, stream=False, response=mock_llm_response))
 
-        assert "Test response" in result
+        # Non-streaming should return all content in a single chunk
+        assert len(result) == 1
+        assert "Hello" in result[0]
+        assert " world" in result[0]
 
-    def test_non_streaming_captures_session_id(self, mock_subprocess_run, mock_llm_response):
-        """Test non-streaming captures session_id."""
-        model = ClaudeCode(model_id="claude-code")
-
-        prompt = MagicMock()
-        prompt.prompt = "Test"
-        prompt.system = None
-        prompt.schema = None
-        prompt.options = ClaudeCodeOptions()
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "session_id": "non-stream-session", "usage": {}}',
-            stderr="",
-        )
-
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
-
-        assert mock_llm_response._claude_session_id == "non-stream-session"
-
-    def test_non_streaming_sets_usage(self, mock_subprocess_run, mock_llm_response):
+    def test_non_streaming_sets_usage(self, mock_llm_response):
         """Test non-streaming sets token usage."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -287,18 +250,17 @@ class TestNonStreaming:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "usage": {"input_tokens": 25, "output_tokens": 15}}',
-            stderr="",
-        )
+        lines = [
+            '{"type": "result", "result": "done", "usage": {"input_tokens": 25, "output_tokens": 15}}\n',
+        ]
 
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
+        with patch("subprocess.Popen", return_value=MockProcess(lines)):
+            list(model.execute(prompt, stream=False, response=mock_llm_response))
 
         mock_llm_response.set_usage.assert_called_once_with(input=25, output=15)
 
-    def test_non_streaming_extracts_content_array(self, mock_subprocess_run, mock_llm_response):
-        """Test non-streaming extracts text from content array."""
+    def test_non_streaming_handles_empty_response(self, mock_llm_response):
+        """Test non-streaming handles empty response gracefully."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
@@ -307,32 +269,12 @@ class TestNonStreaming:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"content": [{"type": "text", "text": "Content text"}], "usage": {}}',
-            stderr="",
-        )
+        lines = [
+            '{"type": "result", "result": "", "usage": {}}\n',
+        ]
 
-        result = list(model.execute(prompt, stream=False, response=mock_llm_response))
+        with patch("subprocess.Popen", return_value=MockProcess(lines)):
+            result = list(model.execute(prompt, stream=False, response=mock_llm_response))
 
-        assert "Content text" in result
-
-    def test_non_streaming_fallback_plain_text(self, mock_subprocess_run, mock_llm_response):
-        """Test non-streaming falls back to plain text on invalid JSON."""
-        model = ClaudeCode(model_id="claude-code")
-
-        prompt = MagicMock()
-        prompt.prompt = "Test"
-        prompt.system = None
-        prompt.schema = None
-        prompt.options = ClaudeCodeOptions()
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout="Plain text response",
-            stderr="",
-        )
-
-        result = list(model.execute(prompt, stream=False, response=mock_llm_response))
-
-        assert "Plain text response" in result
+        # Should return empty list when no content
+        assert result == []

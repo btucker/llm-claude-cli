@@ -7,7 +7,8 @@ leveraging your existing Claude Code subscription without requiring an API key.
 
 import json
 import subprocess
-from typing import Any, Iterator, List, Optional
+import uuid
+from typing import Any, Iterator, Optional
 
 import llm
 from pydantic import Field
@@ -45,10 +46,6 @@ CLAUDE_MODELS = [
 class ClaudeCodeOptions(llm.Options):
     """Options for Claude Code CLI models."""
 
-    max_tokens: Optional[int] = Field(
-        default=None,
-        description="Maximum number of tokens to generate",
-    )
     system_prompt: Optional[str] = Field(
         default=None,
         description="System prompt (replaces Claude Code's default prompt)",
@@ -73,21 +70,13 @@ class ClaudeCodeOptions(llm.Options):
         default=None,
         description="Comma-separated list of disallowed tools",
     )
-    max_turns: Optional[int] = Field(
+    add_dir: Optional[str] = Field(
         default=None,
-        description="Maximum number of agentic turns",
-    )
-    add_dir: Optional[List[str]] = Field(
-        default=None,
-        description="Additional directories for Claude to access",
+        description="Additional directory for Claude to access (can be specified multiple times via CLI)",
     )
     permission_mode: Optional[str] = Field(
         default=None,
         description="Permission mode: 'default', 'plan', 'acceptEdits', 'bypassPermissions', 'delegate', 'dontAsk'",
-    )
-    resume: Optional[str] = Field(
-        default=None,
-        description="Resume a specific Claude Code session by ID (for manual session management)",
     )
     cwd: Optional[str] = Field(
         default=None,
@@ -114,7 +103,9 @@ class ClaudeCode(llm.Model):
     class Options(ClaudeCodeOptions):
         pass
 
-    def __init__(self, model_id: str, claude_model: Optional[str] = None, aliases: tuple = ()):
+    def __init__(
+        self, model_id: str, claude_model: Optional[str] = None, aliases: tuple = ()
+    ):
         self.model_id = model_id
         self.claude_model = claude_model
         self._aliases = aliases
@@ -134,47 +125,40 @@ class ClaudeCode(llm.Model):
         prompt_text = prompt.prompt
 
         # Build CLI command
-        cmd = ["claude", "-p", prompt_text]
+        cmd = ["claude", "-p", prompt_text, "--tools", "default"]
 
         # Add model if specified
         if self.claude_model:
             cmd.extend(["--model", self.claude_model])
 
-        # Check if we should resume a previous Claude Code session
-        # Look for session_id in previous responses' log data
-        session_id_to_resume = None
-        if conversation and conversation.responses:
-            # Try to get session_id from the most recent response
-            last_response = conversation.responses[-1]
-            if hasattr(last_response, "_claude_session_id"):
-                session_id_to_resume = last_response._claude_session_id
-
-        # Use --resume if we have a session ID, otherwise use text context for first message
-        if session_id_to_resume:
-            cmd.extend(["--resume", session_id_to_resume])
-        elif conversation and conversation.responses:
-            # Fallback: build conversation context as text for first turn
-            # (in case session_id wasn't captured)
-            context_parts = []
-            for prev_response in conversation.responses:
-                context_parts.append(f"Human: {prev_response.prompt.prompt}")
-                context_parts.append(f"Assistant: {prev_response.text()}")
-            context_parts.append(f"Human: {prompt_text}")
-            # Replace prompt text with full context
-            cmd[2] = "\n\n".join(context_parts)
+        # Handle session persistence based on LLM's conversation management
+        if conversation is None:
+            # One-off prompt, don't persist session
+            cmd.append("--no-session-persistence")
+        else:
+            # In a conversation - generate deterministic UUID from conversation ID
+            session_uuid = uuid.uuid5(
+                uuid.NAMESPACE_DNS, f"llm-claude-cli:{conversation.id}"
+            )
+            # First message uses --session-id, subsequent messages use --resume
+            if len(conversation.responses) == 0:
+                cmd.extend(["--session-id", str(session_uuid)])
+            else:
+                cmd.extend(["--resume", str(session_uuid)])
 
         # Handle system prompt
         # Use empty system prompt only for simple queries
         # Use default system prompt when agentic features are enabled
         schema = getattr(prompt, "schema", None)
-        has_agentic_options = prompt.options and any([
-            prompt.options.permission_mode,
-            prompt.options.add_dir,
-            prompt.options.max_turns,
-            prompt.options.allowedTools,
-            prompt.options.disallowedTools,
-            prompt.options.mcp_config,
-        ])
+        has_agentic_options = prompt.options and any(
+            [
+                prompt.options.permission_mode,
+                prompt.options.add_dir,
+                prompt.options.allowedTools,
+                prompt.options.disallowedTools,
+                prompt.options.mcp_config,
+            ]
+        )
 
         # Determine if we should use Claude Code's default system prompt
         if prompt.options and prompt.options.use_default_system_prompt is not None:
@@ -187,7 +171,9 @@ class ClaudeCode(llm.Model):
         append = prompt.options.append_system_prompt if prompt.options else False
 
         if not use_default:
-            system_text = prompt.system or (prompt.options.system_prompt if prompt.options else None)
+            system_text = prompt.system or (
+                prompt.options.system_prompt if prompt.options else None
+            )
             if system_text:
                 if append:
                     cmd.extend(["--append-system-prompt", system_text])
@@ -198,26 +184,23 @@ class ClaudeCode(llm.Model):
                 cmd.extend(["--system-prompt", ""])
 
         # Add options
+        # Default allowedTools includes WebSearch; user can override
+        allowed_tools = "WebSearch"
         if prompt.options:
-            if prompt.options.max_tokens:
-                cmd.extend(["--max-tokens", str(prompt.options.max_tokens)])
             if prompt.options.allowedTools:
-                cmd.extend(["--allowedTools", prompt.options.allowedTools])
+                allowed_tools = prompt.options.allowedTools
             if prompt.options.disallowedTools:
                 cmd.extend(["--disallowedTools", prompt.options.disallowedTools])
-            if prompt.options.max_turns:
-                cmd.extend(["--max-turns", str(prompt.options.max_turns)])
             if prompt.options.add_dir:
-                for directory in prompt.options.add_dir:
-                    cmd.extend(["--add-dir", directory])
+                cmd.extend(["--add-dir", prompt.options.add_dir])
             if prompt.options.permission_mode:
                 cmd.extend(["--permission-mode", prompt.options.permission_mode])
-            if prompt.options.resume:
-                cmd.extend(["--resume", prompt.options.resume])
             if prompt.options.mcp_config:
                 cmd.extend(["--mcp-config", prompt.options.mcp_config])
             if prompt.options.verbose:
                 cmd.append("--verbose")
+
+        cmd.extend(["--allowedTools", allowed_tools])
 
         # Add schema if provided
         schema = getattr(prompt, "schema", None)
@@ -254,7 +237,6 @@ class ClaudeCode(llm.Model):
 
             input_tokens = 0
             output_tokens = 0
-            session_id = None
 
             for line in iter(process.stdout.readline, ""):
                 line = line.strip()
@@ -264,10 +246,6 @@ class ClaudeCode(llm.Model):
                 try:
                     event = json.loads(line)
                     event_type = event.get("type", "")
-
-                    # Capture session_id from any event that contains it
-                    if "session_id" in event:
-                        session_id = event["session_id"]
 
                     # Handle different event types
                     if event_type == "assistant":
@@ -286,7 +264,7 @@ class ClaudeCode(llm.Model):
                             if text:
                                 yield text
                     elif event_type == "result":
-                        # Extract usage info and session_id (don't yield result text -
+                        # Extract usage info (don't yield result text -
                         # it duplicates content already yielded from other events)
                         usage = event.get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
@@ -310,10 +288,6 @@ class ClaudeCode(llm.Model):
             if input_tokens or output_tokens:
                 response.set_usage(input=input_tokens, output=output_tokens)
 
-            # Store session_id on response for future conversation turns
-            if session_id:
-                response._claude_session_id = session_id
-
         except subprocess.TimeoutExpired:
             process.kill()
             raise llm.ModelError("Claude Code CLI timed out")
@@ -323,7 +297,12 @@ class ClaudeCode(llm.Model):
             )
 
     def _execute_with_schema(
-        self, cmd: list, timeout: int, response: llm.Response, schema: dict, cwd: Optional[str] = None
+        self,
+        cmd: list,
+        timeout: int,
+        response: llm.Response,
+        schema: dict,
+        cwd: Optional[str] = None,
     ) -> Iterator[str]:
         """Execute with JSON schema for structured output."""
         cmd.extend(["--output-format", "json"])
@@ -374,11 +353,6 @@ class ClaudeCode(llm.Model):
                 output_tokens = usage.get("output_tokens", 0)
                 if input_tokens or output_tokens:
                     response.set_usage(input=input_tokens, output=output_tokens)
-
-                # Capture and store session_id for future conversation turns
-                session_id = data.get("session_id")
-                if session_id:
-                    response._claude_session_id = session_id
 
             except json.JSONDecodeError:
                 # Fallback: treat as plain text
@@ -433,56 +407,14 @@ class ClaudeCode(llm.Model):
     def _execute_non_streaming(
         self, cmd: list, timeout: int, response: llm.Response, cwd: Optional[str] = None
     ) -> Iterator[str]:
-        """Execute with JSON output (non-streaming)."""
-        cmd.extend(["--output-format", "json"])
-
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=cwd,
-            )
-
-            if result.returncode != 0:
-                stderr = result.stderr.strip()
-                raise llm.ModelError(f"Claude Code CLI error: {stderr}")
-
-            stdout = result.stdout.strip()
-            if not stdout:
-                return
-
-            try:
-                data = json.loads(stdout)
-
-                # Extract text from response
-                text = self._extract_text_from_response(data)
-                if text:
-                    yield text
-
-                # Extract usage information
-                usage = data.get("usage", {})
-                input_tokens = usage.get("input_tokens", 0)
-                output_tokens = usage.get("output_tokens", 0)
-                if input_tokens or output_tokens:
-                    response.set_usage(input=input_tokens, output=output_tokens)
-
-                # Capture and store session_id for future conversation turns
-                session_id = data.get("session_id")
-                if session_id:
-                    response._claude_session_id = session_id
-
-            except json.JSONDecodeError:
-                # Fallback: treat as plain text
-                yield stdout
-
-        except subprocess.TimeoutExpired:
-            raise llm.ModelError("Claude Code CLI timed out")
-        except FileNotFoundError:
-            raise llm.ModelError(
-                "Claude Code CLI not found. Please install it: https://docs.anthropic.com/en/docs/claude-code"
-            )
+        """Execute without streaming - collects all output then returns at once."""
+        # Use stream-json internally (works better in nested claude sessions)
+        # but collect all output and return at once
+        collected_text = []
+        for chunk in self._execute_streaming(cmd, timeout, response, cwd):
+            collected_text.append(chunk)
+        if collected_text:
+            yield "".join(collected_text)
 
     def _extract_text_from_response(self, data: dict) -> str:
         """Extract text content from Claude Code JSON response."""
