@@ -63,9 +63,6 @@ llm -m ccli-haiku "Quick answer"
 ### Options
 
 ```bash
-# Set maximum tokens
-llm -m claude-cli "Summarize this" -o max_tokens 500
-
 # Set timeout (in seconds, default 300)
 llm -m claude-cli "Complex task" -o timeout 600
 
@@ -75,20 +72,14 @@ llm -m claude-cli "Read file.txt" -o allowedTools "Read,Glob"
 # Block specific tools
 llm -m claude-cli "Help me code" -o disallowedTools "Bash(rm:*),Bash(sudo:*)"
 
-# Set max turns for agentic operations
-llm -m claude-cli "Build a web app" -o max_turns 10
-
-# Add additional directories for Claude to access
-llm -m claude-cli "Review the frontend" -o add_dir '["../frontend", "../shared"]'
+# Add additional directory for Claude to access
+llm -m claude-cli "Review the frontend" -o add_dir "../frontend"
 
 # Set working directory
 llm -m claude-cli "Run the tests" -o cwd "/path/to/project"
 
 # Set permission mode (default, acceptEdits, bypassPermissions)
 llm -m claude-cli "Refactor this" -o permission_mode "acceptEdits"
-
-# Manually resume a specific Claude Code session (for advanced use)
-llm -m claude-cli "Continue from where we left off" -o resume "session-id-here"
 
 # Use custom MCP configuration
 llm -m claude-cli "Use my tools" -o mcp_config "/path/to/mcp.json"
@@ -99,22 +90,47 @@ llm -m claude-cli "Debug this" -o verbose true
 
 ### System Prompts
 
-You can customize the system prompt in two ways:
+The plugin auto-detects when to use Claude Code's default agentic system prompt:
+
+- **Simple queries** (no agentic options, no schema): Uses an empty system prompt for direct responses
+- **Agentic queries** (tools, permissions, schema, etc.): Uses Claude Code's default system prompt
+
+You can customize this behavior:
 
 ```bash
-# Append to Claude Code's default system prompt (recommended)
-# This preserves Claude Code's agentic capabilities while adding your instructions
-llm -m claude-cli "Analyze this code" -o system_prompt "Focus on security vulnerabilities"
+# Simple query - uses empty system prompt by default
+llm -m claude-cli "What is the capital of France?"
 
-# Fully replace the default system prompt
-# Use this when you want complete control over Claude's behavior
-llm -m claude-cli "Hello" -o system_prompt "You are a pirate" -o replace_system_prompt true
+# Custom system prompt (replaces the default)
+llm -m claude-cli "Hello" --system "You are a pirate"
 
-# Using LLM's built-in --system flag (appends by default)
-llm -m claude-cli "Review this PR" --system "You are a senior code reviewer"
+# Append to Claude Code's default system prompt instead of replacing
+# This preserves agentic capabilities while adding your instructions
+llm -m claude-cli "Analyze this code" --system "Focus on security" -o append_system_prompt true
+
+# Explicitly control whether to use Claude Code's default system prompt
+llm -m claude-cli "Help me code" -o use_default_system_prompt true
 ```
 
-The default behavior appends to Claude Code's system prompt using `--append-system-prompt`, which preserves agentic tool use. Set `replace_system_prompt` to `true` to fully override with `--system-prompt`.
+### Conversations
+
+Use LLM's conversation features for multi-turn interactions:
+
+```bash
+# Start a conversation (gets assigned an ID automatically)
+llm -m claude-cli "My name is Alice"
+
+# Continue the most recent conversation
+llm -m claude-cli "What's my name?" -c
+
+# View conversation history and IDs
+llm logs list
+
+# Continue a specific conversation by ID
+llm -m claude-cli "Tell me more" --cid 01abc123...
+```
+
+The plugin generates a deterministic Claude session ID from the LLM conversation ID, so continuing a conversation automatically resumes the corresponding Claude session. For one-off prompts (without `-c` or `--cid`), the plugin passes `--no-session-persistence` to Claude to avoid creating orphan sessions.
 
 ### Streaming
 
@@ -202,8 +218,8 @@ This plugin invokes the Claude Code CLI (`claude`) as a subprocess with the `-p`
 - **Streaming**: Uses `--output-format stream-json` for real-time NDJSON streaming
 - **Non-streaming**: Uses `--output-format json` for complete responses
 - **Schemas**: Uses `--json-schema` for structured JSON output conformance
-- **System prompts**: Uses `--append-system-prompt` (default) or `--system-prompt` (replace)
-- **Conversations**: Captures Claude Code session IDs and auto-resumes via `--resume` for multi-turn conversations
+- **System prompts**: Auto-detects when to use Claude Code's default; supports `--system-prompt` (replace) or `--append-system-prompt`
+- **Conversations**: Integrates with LLM's `-c`/`--cid` flags; uses `--no-session-persistence` for one-off prompts
 - **Model selection**: Passes `--model` flag to select Opus, Sonnet, or Haiku
 - **Directory access**: Uses `--add-dir` for multi-directory projects
 - **Permission control**: Uses `--permission-mode` and tool filtering

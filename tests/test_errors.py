@@ -9,11 +9,24 @@ import llm
 from llm_claude_cli import ClaudeCode, ClaudeCodeOptions
 
 
+def create_mock_popen(events=None, returncode=0):
+    """Create a properly configured mock Popen for streaming tests."""
+    if events is None:
+        events = [
+            '{"type": "result", "result": "test", "usage": {"input_tokens": 10, "output_tokens": 5}}',
+        ]
+
+    mock_process = MagicMock()
+    mock_process.stdout.readline.side_effect = events + [""]  # Empty string ends iteration
+    mock_process.wait.return_value = returncode
+    return mock_process
+
+
 class TestErrorHandling:
     """Tests for error handling in execute methods."""
 
     def test_cli_not_found_error(self, mock_llm_response):
-        """Test error when Claude CLI is not found."""
+        """Test error when Claude CLI is not found (non-streaming uses streaming internally)."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
@@ -22,7 +35,7 @@ class TestErrorHandling:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        with patch("subprocess.run", side_effect=FileNotFoundError()):
+        with patch("subprocess.Popen", side_effect=FileNotFoundError()):
             with pytest.raises(llm.ModelError) as exc_info:
                 list(model.execute(prompt, stream=False, response=mock_llm_response))
 
@@ -45,7 +58,7 @@ class TestErrorHandling:
             assert "Claude Code CLI not found" in str(exc_info.value)
 
     def test_timeout_error(self, mock_llm_response):
-        """Test error on CLI timeout."""
+        """Test error on CLI timeout (non-streaming uses streaming internally)."""
         model = ClaudeCode(model_id="claude-code")
 
         prompt = MagicMock()
@@ -54,35 +67,19 @@ class TestErrorHandling:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions(timeout=1)
 
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 1)):
+        mock_process = MagicMock()
+        mock_process.stdout.readline = MagicMock(side_effect=['{"type": "test"}\n', ''])
+        mock_process.wait = MagicMock(side_effect=subprocess.TimeoutExpired("cmd", 1))
+        mock_process.kill = MagicMock()
+
+        with patch("subprocess.Popen", return_value=mock_process):
             with pytest.raises(llm.ModelError) as exc_info:
                 list(model.execute(prompt, stream=False, response=mock_llm_response))
 
             assert "timed out" in str(exc_info.value)
+            mock_process.kill.assert_called_once()
 
-    def test_cli_error_non_zero_return(self, mock_subprocess_run, mock_llm_response):
-        """Test error when CLI returns non-zero exit code."""
-        model = ClaudeCode(model_id="claude-code")
-
-        prompt = MagicMock()
-        prompt.prompt = "Test"
-        prompt.system = None
-        prompt.schema = None
-        prompt.options = ClaudeCodeOptions()
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="Some error occurred",
-        )
-
-        with pytest.raises(llm.ModelError) as exc_info:
-            list(model.execute(prompt, stream=False, response=mock_llm_response))
-
-        assert "Claude Code CLI error" in str(exc_info.value)
-        assert "Some error occurred" in str(exc_info.value)
-
-    def test_empty_response_no_error(self, mock_subprocess_run, mock_llm_response):
+    def test_empty_response_no_error(self, mock_llm_response):
         """Test that empty response doesn't raise error."""
         model = ClaudeCode(model_id="claude-code")
 
@@ -92,15 +89,13 @@ class TestErrorHandling:
         prompt.schema = None
         prompt.options = ClaudeCodeOptions()
 
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",
-            stderr="",
-        )
-
-        # Should not raise, just return empty
-        result = list(model.execute(prompt, stream=False, response=mock_llm_response))
-        assert result == []
+        # Mock returns only a result event with empty content
+        with patch("subprocess.Popen", return_value=create_mock_popen([
+            '{"type": "result", "result": "", "usage": {}}',
+        ])):
+            # Should not raise, just return empty
+            result = list(model.execute(prompt, stream=False, response=mock_llm_response))
+            assert result == []
 
 
 class TestStreamingErrorHandling:

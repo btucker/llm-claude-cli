@@ -109,27 +109,6 @@ class TestSchemaSupport:
         parsed = json.loads(result[0])
         assert parsed["name"] == "Max"
 
-    def test_schema_captures_session_id(self, mock_subprocess_run, mock_llm_response):
-        """Test that schema execution captures session_id."""
-        model = ClaudeCode(model_id="claude-code")
-
-        prompt = MagicMock()
-        prompt.prompt = "Create a dog"
-        prompt.system = None
-        prompt.options = ClaudeCodeOptions()
-        prompt.schema = {"type": "object"}
-
-        mock_subprocess_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"result": "test", "session_id": "schema-session", "usage": {}}',
-            stderr="",
-        )
-
-        list(model.execute(prompt, stream=False, response=mock_llm_response))
-
-        assert mock_llm_response._claude_session_id == "schema-session"
-
-
 class TestExtractStructuredOutput:
     """Tests for _extract_structured_output method."""
 
