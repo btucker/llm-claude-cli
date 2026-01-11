@@ -184,3 +184,51 @@ class TestExtractStructuredOutput:
         result = model._extract_structured_output({})
 
         assert result is None
+
+
+class TestResponseJson:
+    """Tests for response._json being set correctly."""
+
+    def test_response_json_set_from_structured_output(self, mock_subprocess_run, mock_llm_response):
+        """Test that response._json is set when using schema with structured_output field."""
+        model = ClaudeCode(model_id="claude-code")
+
+        prompt = MagicMock()
+        prompt.prompt = "Create a dog"
+        prompt.system = None
+        prompt.options = ClaudeCodeOptions()
+        prompt.schema = {"type": "object"}
+
+        # Response with structured_output field (dict)
+        mock_subprocess_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"structured_output": {"name": "Buddy", "age": 3}, "usage": {}}',
+            stderr="",
+        )
+
+        result = list(model.execute(prompt, stream=False, response=mock_llm_response))
+
+        # Verify response._json was set
+        assert mock_llm_response._json == {"name": "Buddy", "age": 3}
+
+    def test_response_json_set_from_text_content(self, mock_subprocess_run, mock_llm_response):
+        """Test that response._json is set when structured output is in text content."""
+        model = ClaudeCode(model_id="claude-code")
+
+        prompt = MagicMock()
+        prompt.prompt = "Create a dog"
+        prompt.system = None
+        prompt.options = ClaudeCodeOptions()
+        prompt.schema = {"type": "object"}
+
+        # Response with JSON in text content (needs parsing)
+        mock_subprocess_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"result": {"content": [{"type": "text", "text": "{\\"name\\": \\"Max\\", \\"age\\": 5}"}]}, "usage": {}}',
+            stderr="",
+        )
+
+        result = list(model.execute(prompt, stream=False, response=mock_llm_response))
+
+        # Verify response._json was set from parsed text
+        assert mock_llm_response._json == {"name": "Max", "age": 5}
