@@ -335,13 +335,13 @@ class ClaudeCode(llm.Model):
                         # Check if it's already valid JSON
                         try:
                             parsed = json.loads(structured_output)
-                            response._json = parsed
+                            response.response_json = parsed
                             yield structured_output
                         except json.JSONDecodeError:
                             # Not JSON, yield as-is
                             yield structured_output
                     else:
-                        response._json = structured_output
+                        response.response_json = structured_output
                         yield json.dumps(structured_output)
                 else:
                     # Fallback to regular text extraction

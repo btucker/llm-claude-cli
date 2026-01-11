@@ -209,7 +209,7 @@ class TestResponseJson:
         result = list(model.execute(prompt, stream=False, response=mock_llm_response))
 
         # Verify response._json was set
-        assert mock_llm_response._json == {"name": "Buddy", "age": 3}
+        assert mock_llm_response.response_json == {"name": "Buddy", "age": 3}
 
     def test_response_json_set_from_text_content(self, mock_subprocess_run, mock_llm_response):
         """Test that response._json is set when structured output is in text content."""
@@ -231,4 +231,4 @@ class TestResponseJson:
         result = list(model.execute(prompt, stream=False, response=mock_llm_response))
 
         # Verify response._json was set from parsed text
-        assert mock_llm_response._json == {"name": "Max", "age": 5}
+        assert mock_llm_response.response_json == {"name": "Max", "age": 5}
