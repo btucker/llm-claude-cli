@@ -7,6 +7,7 @@ leveraging your existing Claude Code subscription without requiring an API key.
 
 import json
 import subprocess
+import threading
 import uuid
 from typing import Any, Iterator, Optional
 
@@ -225,6 +226,10 @@ class ClaudeCode(llm.Model):
         # --verbose is required for stream-json with -p mode
         cmd.extend(["--output-format", "stream-json", "--verbose"])
 
+        process: Optional[subprocess.Popen[str]] = None
+        stderr_thread: Optional[threading.Thread] = None
+        stderr_lines: list[str] = []
+
         try:
             process = subprocess.Popen(
                 cmd,
@@ -235,9 +240,21 @@ class ClaudeCode(llm.Model):
                 cwd=cwd,
             )
 
+            # Read stderr in background thread to prevent pipe buffer deadlock
+            # This is critical when running under Neovim's jobstart or other
+            # nested subprocess environments
+            def drain_stderr():
+                assert process is not None and process.stderr is not None
+                for line in iter(process.stderr.readline, ""):
+                    stderr_lines.append(line)
+
+            stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
+            stderr_thread.start()
+
             input_tokens = 0
             output_tokens = 0
 
+            assert process.stdout is not None  # We passed stdout=PIPE
             for line in iter(process.stdout.readline, ""):
                 line = line.strip()
                 if not line:
@@ -284,12 +301,24 @@ class ClaudeCode(llm.Model):
 
             process.wait(timeout=timeout)
 
+            # Wait for stderr thread to finish (with timeout to avoid hanging)
+            stderr_thread.join(timeout=1.0)
+
+            # Check for errors
+            if process.returncode != 0:
+                stderr_output = "".join(stderr_lines).strip()
+                if stderr_output:
+                    raise llm.ModelError(f"Claude Code CLI error: {stderr_output}")
+
             # Set token usage if available
             if input_tokens or output_tokens:
                 response.set_usage(input=input_tokens, output=output_tokens)
 
         except subprocess.TimeoutExpired:
-            process.kill()
+            if process is not None:
+                process.kill()
+            if stderr_thread is not None:
+                stderr_thread.join(timeout=0.5)
             raise llm.ModelError("Claude Code CLI timed out")
         except FileNotFoundError:
             raise llm.ModelError(
